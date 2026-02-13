@@ -572,6 +572,22 @@ export function App(): JSX.Element {
     } catch { /* ignore */ }
   };
 
+  // In TTS mode, derive a "display" game state that matches what the user has seen so far
+  const displayGame = useMemo(() => {
+    if (!game || !ttsEnabled) return game;
+    const target = displayUpTo.current;
+    let best: GameState | null = null;
+    let bestLen = -1;
+    for (const [len, snap] of gameSnapshots.current) {
+      if (len <= target && len > bestLen) {
+        best = snap;
+        bestLen = len;
+      }
+    }
+    return best ?? game;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, ttsEnabled, displayVersion]);
+
   // --- SETUP ---
   if (!game) {
     const renderPlayerList = (team: TeamColor) => {
@@ -688,23 +704,6 @@ export function App(): JSX.Element {
   }
 
   // --- GAME ---
-  // In TTS mode, derive a "display" game state that matches what the user has seen so far
-  const displayGame = useMemo(() => {
-    if (!game || !ttsEnabled) return game;
-    const target = displayUpTo.current;
-    // Find the best snapshot: largest chatLog length ≤ target
-    let best: GameState | null = null;
-    let bestLen = -1;
-    for (const [len, snap] of gameSnapshots.current) {
-      if (len <= target && len > bestLen) {
-        best = snap;
-        bestLen = len;
-      }
-    }
-    return best ?? game;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, ttsEnabled, displayVersion]);
-
   const boardGame = displayGame ?? game;
   const turn = boardGame.turn;
   const pendingProposals = isSpectator ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
