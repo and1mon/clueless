@@ -444,43 +444,49 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  padding: 0.45rem 1.2rem;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.topbar h1 { font-size: 1.1rem; white-space: nowrap; }
+.topbar h1 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
 
 .topbar-right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .score-bar {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 1.6rem;
+  gap: 0.75rem;
+  font-size: 1.8rem;
   font-weight: 800;
 }
 
-.team-score { display: flex; align-items: baseline; gap: 0.25rem; }
-.team-score small { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.team-score { display: flex; align-items: baseline; gap: 0.3rem; }
+.team-score small { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 
 .red-score { color: var(--red); }
 .blue-score { color: var(--blue); }
-.sep { color: var(--muted); font-weight: 400; }
+.sep { color: var(--muted); font-weight: 400; font-size: 1.2rem; }
 
 .badge {
-  padding: 0.2rem 0.6rem;
+  padding: 0.25rem 0.7rem;
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .badge.red { 
@@ -498,10 +504,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.75rem;
   width: 100%;
-  max-width: 800px;
-  margin-bottom: 1rem;
+  max-width: 860px;
+  margin-bottom: 1.25rem;
 }
 
 .game-status {
@@ -514,25 +520,25 @@ body {
 }
 
 .winner-banner {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 800;
 }
 
 .phase { font-size: 1rem; color: var(--muted); }
 
 .hint-word {
-  font-size: 1.8rem;
+  font-size: 2rem;
   font-weight: 800;
   color: var(--text);
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
 }
 
 .hint-count {
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
   font-weight: 700;
   font-size: 1.2rem;
-  padding: 0.3rem 0.75rem;
+  padding: 0.3rem 0.8rem;
   border-radius: 999px;
   min-width: 2rem;
   text-align: center;
@@ -547,14 +553,16 @@ body {
 .winner { font-weight: 700; font-size: 1.1rem; }
 
 .new-game-btn {
-  padding: 0.4rem 0.8rem;
+  padding: 0.5rem 1rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
   font-size: 0.85rem;
+  font-weight: 500;
   white-space: nowrap;
+  transition: color 0.1s, border-color 0.1s;
 }
 
 .new-game-btn:hover { color: var(--text); border-color: var(--muted); }
@@ -565,12 +573,11 @@ body {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
   min-height: 0;
-  gap: 0.5rem;
 }
 
 /* --- Board --- */
 .board-section {
-  padding: 1.5rem;
+  padding: 2rem 2rem 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -581,28 +588,29 @@ body {
 .board-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 0.75rem;
+  gap: 0.6rem;
   width: 100%;
-  max-width: 800px;
+  max-width: 860px;
 }
 
 .card {
-  border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.3rem 0.5rem;
   text-align: center;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s;
+  transition: transform 0.1s, box-shadow 0.1s, border-color 0.15s;
   background: var(--card-bg);
   color: var(--text);
+  letter-spacing: -0.01em;
 }
 
 .card:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-  background: var(--card-hover);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-color: var(--muted);
 }
 
 .card:disabled { cursor: default; }
@@ -613,9 +621,9 @@ body {
 .card.revealed.assassin { background: var(--assassin-bg); color: #e5e7eb; }
 
 /* Spymaster view — subtle border hints */
-.card.spy-red { border-color: var(--red); border-width: 3px; }
-.card.spy-blue { border-color: var(--blue); border-width: 3px; }
-.card.spy-assassin { border-color: #888; border-width: 3px; background: var(--assassin-bg); color: #e5e7eb; }
+.card.spy-red { border-color: var(--red); border-width: 2px; }
+.card.spy-blue { border-color: var(--blue); border-width: 2px; }
+.card.spy-assassin { border-color: #888; border-width: 2px; background: var(--assassin-bg); color: #e5e7eb; }
 
 /* --- Chat panel --- */
 .chat-section {
@@ -627,69 +635,83 @@ body {
 }
 
 .spectator-badge {
-  padding: 0.15rem 0.5rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
   font-weight: 600;
-  background: #30363d;
+  background: var(--border);
   color: var(--muted);
 }
 
 .actions {
-  padding: 0.6rem 0.8rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .action-row {
   display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.4rem;
+  gap: 0.5rem;
 }
 
 .action-row input {
   flex: 1;
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
   font-size: 0.95rem;
+  transition: border-color 0.15s;
 }
 
-.count-input { max-width: 55px; }
+.action-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+.count-input { max-width: 60px; }
 
 .action-row button,
 .chat-input button {
-  padding: 0.55rem 0.8rem;
+  padding: 0.6rem 1rem;
   border: none;
   border-radius: 8px;
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
   font-weight: 600;
   font-size: 0.9rem;
   cursor: pointer;
   white-space: nowrap;
+  transition: opacity 0.1s;
 }
 
+.action-row button:hover,
+.chat-input button:hover { opacity: 0.85; }
+
 button.secondary { background: var(--border); color: var(--muted); }
-button.secondary:hover { color: var(--text); }
+button.secondary:hover { color: var(--text); opacity: 1; }
 
 .proposals {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
 }
 
 .proposal-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0.6rem;
+  padding: 0.6rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   font-size: 0.9rem;
   background: var(--bg);
+  gap: 0.75rem;
 }
 
 .proposal-label { font-weight: 600; }
@@ -700,16 +722,19 @@ button.secondary:hover { color: var(--text); }
   font-style: italic;
 }
 
-.vote-buttons { display: flex; gap: 0.3rem; }
+.vote-buttons { display: flex; gap: 0.4rem; }
 
 .vote-buttons button {
-  padding: 0.3rem 0.6rem;
+  padding: 0.4rem 0.75rem;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 600;
+  transition: opacity 0.1s;
 }
+
+.vote-buttons button:hover { opacity: 0.85; }
 
 button.accept { background: var(--green); color: #fff; }
 button.reject { background: var(--red); color: #fff; }
@@ -718,10 +743,10 @@ button.reject { background: var(--red); color: #fff; }
 .chat-log {
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
   min-height: 0;
 }
 
@@ -737,10 +762,9 @@ button.reject { background: var(--red); color: #fff; }
 
 /* Turn divider */
 .turn-divider {
-  margin: 1.2rem 0 0.8rem;
+  margin: 1.5rem 0 0.75rem;
   border: 0;
-  border-top: 2px solid var(--border);
-  opacity: 0.5;
+  border-top: 1px solid var(--border);
 }
 
 /* System messages */
@@ -757,12 +781,11 @@ button.reject { background: var(--red); color: #fff; }
   font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
-  padding: 0.45rem 0.9rem;
-  border-radius: 10px;
-  background: var(--surface);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: var(--bg);
   border: 1px solid var(--border);
   text-align: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .action-msg.team-red { border-left: 3px solid var(--red); }
@@ -773,22 +796,22 @@ button.reject { background: var(--red); color: #fff; }
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.3rem 0.75rem;
+  padding: 0.3rem 0.8rem;
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 600;
 }
 
 .vote-accept {
-  background: rgba(22, 163, 74, 0.15);
+  background: rgba(22, 163, 74, 0.12);
   color: var(--green);
-  border: 1px solid rgba(22, 163, 74, 0.3);
+  border: 1px solid rgba(22, 163, 74, 0.25);
 }
 
 .vote-reject {
-  background: rgba(220, 38, 38, 0.15);
+  background: rgba(220, 38, 38, 0.12);
   color: var(--red);
-  border: 1px solid rgba(220, 38, 38, 0.3);
+  border: 1px solid rgba(220, 38, 38, 0.25);
 }
 
 .vote-icon {
@@ -801,11 +824,11 @@ button.reject { background: var(--red); color: #fff; }
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 0.8rem;
-  border-radius: 10px;
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 600;
-  background: var(--surface);
+  background: var(--bg);
   border: 2px dashed var(--border);
   color: var(--text);
 }
@@ -819,21 +842,20 @@ button.reject { background: var(--red); color: #fff; }
 .retry-prompt {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 10px;
-  background: var(--surface);
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  background: var(--bg);
   border: 1px solid var(--border);
   font-size: 0.85rem;
   color: var(--muted);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .retry-btn {
-  padding: 0.3rem 0.7rem;
+  padding: 0.35rem 0.8rem;
   border: none;
   border-radius: 6px;
-  background: var(--blue);
+  background: var(--primary);
   color: #fff;
   font-weight: 600;
   font-size: 0.8rem;
@@ -844,28 +866,28 @@ button.reject { background: var(--red); color: #fff; }
 /* Team roster */
 .team-roster {
   display: flex;
-  gap: 2.5rem;
+  gap: 2rem;
   justify-content: center;
   width: 100%;
-  max-width: 800px;
-  margin-top: 1rem;
-  padding-top: 1rem;
+  max-width: 860px;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
   border-top: 1px solid var(--border);
 }
 
 .roster-column {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  min-width: 200px;
+  gap: 0.4rem;
+  min-width: 180px;
   flex: 1;
 }
 
 .roster-header {
-  font-size: 0.95rem;
+  font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   margin: 0;
   padding-bottom: 0.4rem;
   border-bottom: 2px solid;
@@ -877,22 +899,22 @@ button.reject { background: var(--red); color: #fff; }
 .roster-players {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 
 .roster-player {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  font-size: 0.95rem;
-  padding: 0.7rem 0.9rem;
-  border-radius: 10px;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
   background: var(--surface);
   border: 1px solid var(--border);
   cursor: default;
   white-space: nowrap;
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s, transform 0.1s;
 }
 
 .roster-player:hover {
@@ -908,7 +930,7 @@ button.reject { background: var(--red); color: #fff; }
 }
 
 .roster-icon {
-  font-size: 1.2rem;
+  font-size: 1rem;
   line-height: 1;
 }
 
@@ -927,7 +949,7 @@ button.reject { background: var(--red); color: #fff; }
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
   font-size: 0.8rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   z-index: 200;
   min-width: 220px;
   white-space: normal;
@@ -951,10 +973,10 @@ button.reject { background: var(--red); color: #fff; }
 /* Bubbles */
 .bubble {
   max-width: 80%;
-  padding: 0.55rem 0.8rem;
-  border-radius: 16px;
-  font-size: 0.9rem;
-  line-height: 1.45;
+  padding: 0.6rem 0.9rem;
+  border-radius: 14px;
+  font-size: 0.92rem;
+  line-height: 1.5;
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -980,7 +1002,7 @@ button.reject { background: var(--red); color: #fff; }
 }
 
 .bubble-name {
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--muted);
 }
@@ -1029,20 +1051,27 @@ button.reject { background: var(--red); color: #fff; }
 /* --- Chat input --- */
 .chat-input {
   display: flex;
-  gap: 0.4rem;
-  padding: 0.6rem 0.8rem;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .chat-input input {
   flex: 1;
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
   color: var(--text);
   font-size: 0.95rem;
+  transition: border-color 0.15s;
+}
+
+.chat-input input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
 @media (max-width: 900px) {
@@ -1054,6 +1083,9 @@ button.reject { background: var(--red); color: #fff; }
     border-left: none;
     border-top: 1px solid var(--border);
   }
+  .board-section { padding: 1.25rem; }
+  .team-roster { flex-direction: column; gap: 1rem; }
+  .roster-column { min-width: 0; }
 }
 
 /* --- TTS --- */
@@ -1085,15 +1117,17 @@ button.reject { background: var(--red); color: #fff; }
 .tts-toggle {
   background: none;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 1.1rem;
-  padding: 4px 8px;
-  transition: background 0.15s;
+  padding: 0.4rem 0.6rem;
+  transition: background 0.15s, border-color 0.15s;
 }
 .tts-toggle:hover {
   background: var(--card-hover);
+  border-color: var(--muted);
 }
 .tts-toggle.active {
   background: var(--primary-bg);
+  border-color: var(--primary);
 }

@@ -60,7 +60,7 @@ function parseMarkdown(text: string): string {
 }
 
 export function App(): JSX.Element {
-  const [game, setGame] = useState<GameState | null>(null);
+  const [game, setGameRaw] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -70,9 +70,23 @@ export function App(): JSX.Element {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<GameState | null>(null);
-  gameRef.current = game;
   const [displayVersion, setDisplayVersion] = useState(0);
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+
+  // TTS board sync: store game snapshots keyed by chatLog length
+  const gameSnapshots = useRef<Map<number, GameState>>(new Map());
+  const setGame = useCallback((g: GameState | null) => {
+    if (g) {
+      gameSnapshots.current.set(g.chatLog.length, g);
+      // Keep only recent snapshots to avoid memory leak
+      if (gameSnapshots.current.size > 50) {
+        const keys = Array.from(gameSnapshots.current.keys()).sort((a, b) => a - b);
+        for (let i = 0; i < keys.length - 50; i++) gameSnapshots.current.delete(keys[i]);
+      }
+    }
+    setGameRaw(g);
+  }, []);
+  gameRef.current = game;
 
   const [setup, setSetup] = useState({
     humanName: 'You',
@@ -383,6 +397,7 @@ export function App(): JSX.Element {
 
   const newGame = (): void => {
     setGame(null);
+    gameSnapshots.current.clear();
     setError('');
   };
 
@@ -673,10 +688,28 @@ export function App(): JSX.Element {
   }
 
   // --- GAME ---
-  const turn = game.turn;
+  // In TTS mode, derive a "display" game state that matches what the user has seen so far
+  const displayGame = useMemo(() => {
+    if (!game || !ttsEnabled) return game;
+    const target = displayUpTo.current;
+    // Find the best snapshot: largest chatLog length ≤ target
+    let best: GameState | null = null;
+    let bestLen = -1;
+    for (const [len, snap] of gameSnapshots.current) {
+      if (len <= target && len > bestLen) {
+        best = snap;
+        bestLen = len;
+      }
+    }
+    return best ?? game;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, ttsEnabled, displayVersion]);
+
+  const boardGame = displayGame ?? game;
+  const turn = boardGame.turn;
   const pendingProposals = isSpectator ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
-  const redLeft = game.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
-  const blueLeft = game.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
+  const redLeft = boardGame.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
+  const blueLeft = boardGame.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
   const isHumanSpymaster = humanPlayer?.role === 'spymaster';
   const showSpyView = isSpectator || isHumanSpymaster;
   const canAct = !isSpectator;
@@ -740,8 +773,8 @@ export function App(): JSX.Element {
               <span className="sep">—</span>
               <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
             </div>
-            {game.winner ? (
-              <div className="game-status winner-banner">🏆 {game.winner} wins!</div>
+            {boardGame.winner ? (
+              <div className="game-status winner-banner">🏆 {boardGame.winner} wins!</div>
             ) : turn.phase === 'banter' ? (
               <div className="game-status">
                 <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
@@ -762,7 +795,7 @@ export function App(): JSX.Element {
             )}
           </div>
           <div className="board-grid">
-            {game.cards.map((card) => {
+            {boardGame.cards.map((card) => {
               const showOwner = showSpyView && card.owner !== 'neutral' && !card.revealed;
               return (
                 <button
