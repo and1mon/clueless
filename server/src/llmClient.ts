@@ -140,7 +140,7 @@ export class LlmClient {
           voteInstructions = `You proposed ${proposal.kind === 'guess' ? `guessing "${proposal.payload.word}"` : 'ending the turn'}. Wait for votes.`;
         } else {
           const what = proposal.kind === 'guess' ? `guess "${proposal.payload.word}"` : 'end the turn';
-          voteInstructions = `${proposer} wants to ${what}. You MUST vote NOW.\naction: {"type":"vote","proposalId":"${proposal.id}","decision":"accept"|"reject"}`;
+          voteInstructions = `${proposer} wants to ${what}. You MUST vote NOW.\nIf you keep debating instead of voting, your team can lose the turn.\naction: {"type":"vote","proposalId":"${proposal.id}","decision":"accept"|"reject"}`;
         }
       }
 
@@ -174,12 +174,16 @@ export class LlmClient {
 
     const conversationRules = [
       'CONVERSATION RULES (follow strictly):',
+      '- PRIMARY GOAL: win the game, not roleplay the personality.',
+      '- Personality is flavor only. Be flexible and compromise when needed to keep team momentum.',
       '- You MUST directly respond to or reference what the previous speaker said before adding your own thoughts.',
       '- If you agree, say so briefly ("yeah", "totally", "good call"). If you disagree, explain why in one sentence.',
       '- Do NOT repeat information that was just stated by someone else.',
       '- Keep it short: 1-2 sentences max. Only go longer if you have a genuinely new strategic insight.',
       '- For simple reactions, keep it very brief — a few words is fine ("nice!", "oof", "let\'s go").',
       '- Vary your tone: sometimes be brief, sometimes elaborate. Don\'t always use the same pattern.',
+      '- If there is a pending proposal from a teammate, stop debating and vote immediately.',
+      '- Taking too long to vote can forfeit your team\'s turn.',
       humanTeammate ? `- Occasionally address ${humanTeammate.name} by name and ask for their opinion or input.` : '',
     ].filter(Boolean).join('\n');
 
