@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { marked } from 'marked';
 import { apiRequest } from './api';
 import { type GameState, type Player, type PlayerRole, type TeamColor } from './types';
 
@@ -46,6 +47,17 @@ const PERSONALITY_POOL: { name: string; description: string }[] = [
   { name: 'The Speedster', description: 'You are impatient and action-oriented. You hate long discussions and want to guess already.' },
   { name: 'The Poet', description: 'You are a wordsmith. You love puns, etymology, and clever word associations.' },
 ];
+
+// Configure marked for inline rendering
+marked.setOptions({
+  breaks: true, // Convert \n to <br>
+  gfm: true, // GitHub Flavored Markdown
+});
+
+// Helper to parse markdown inline (no block elements)
+function parseMarkdown(text: string): string {
+  return marked.parseInline(text) as string;
+}
 
 export function App(): JSX.Element {
   const [game, setGame] = useState<GameState | null>(null);
@@ -628,7 +640,7 @@ export function App(): JSX.Element {
                   ) : (
                     <div className={`bubble ${isHuman ? 'bubble-mine' : 'bubble-theirs'} bubble-team-${msgTeam}`}>
                       <span className="bubble-name">{msg.playerName}</span>
-                      <span className="bubble-text">{msg.content}</span>
+                      <span className="bubble-text" dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }} />
                     </div>
                   )}
                 </div>

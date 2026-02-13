@@ -843,13 +843,11 @@ button.reject { background: var(--red); color: #fff; }
 .bubble-mine {
   background: var(--bubble-mine);
   color: var(--text);
-  border-bottom-right-radius: 4px;
 }
 
 .bubble-theirs {
   background: var(--bubble-theirs);
   color: var(--bubble-theirs-text);
-  border-bottom-left-radius: 4px;
 }
 
 /* Team alignment for rows */
@@ -874,6 +872,23 @@ button.reject { background: var(--red); color: #fff; }
 
 .bubble-text {
   word-wrap: break-word;
+}
+
+/* Markdown formatting in bubbles */
+.bubble-text strong {
+  font-weight: 700;
+}
+
+.bubble-text em {
+  font-style: italic;
+}
+
+.bubble-text code {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
 }
 
 .thinking-bubble {
