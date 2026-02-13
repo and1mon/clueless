@@ -85,8 +85,8 @@ body {
 
 /* --- Setup --- */
 .setup-screen {
-  max-width: 480px;
-  margin: 60px auto;
+  max-width: 520px;
+  margin: 40px auto;
   padding: 2.5rem;
 }
 
@@ -103,6 +103,24 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
+}
+
+.setup-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.setup-fieldset legend {
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0 0.4rem;
 }
 
 .setup-row {
@@ -142,6 +160,121 @@ body {
 }
 
 .setup-form button:disabled { opacity: 0.5; }
+
+/* Team setup */
+.team-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.team-setup + .team-setup { margin-top: 0.6rem; }
+
+.team-setup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.team-label {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.team-label.red { color: var(--red); }
+.team-label.blue { color: var(--blue); }
+
+.llm-count-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.llm-count-ctrl button {
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.llm-count-ctrl span {
+  font-weight: 700;
+  font-size: 0.9rem;
+  min-width: 1.2rem;
+  text-align: center;
+}
+
+.llm-player-row {
+  margin-left: 0.5rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
+.llm-player-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.player-name-input {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.expand-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.expand-btn:hover { color: var(--text); }
+
+.llm-player-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  padding: 0.4rem;
+  background: var(--bg);
+  border-radius: 6px;
+}
+
+.llm-player-details label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.llm-player-details input,
+.llm-player-details textarea {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  resize: vertical;
+}
 
 .error { color: #ef4444; font-size: 0.9rem; margin: 0.5rem 1rem; }
 
@@ -338,32 +471,6 @@ body {
   min-height: 0;
 }
 
-.chat-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.tab {
-  flex: 1;
-  padding: 0.6rem;
-  border: none;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 600;
-  border-bottom: 2px solid transparent;
-}
-
-.tab.active {
-  color: var(--text);
-  border-bottom-color: var(--blue);
-}
-
-.tab.active.red-tab { border-bottom-color: var(--red); }
-.tab.active.blue-tab { border-bottom-color: var(--blue); }
-
 .spectator-badge {
   padding: 0.15rem 0.5rem;
   border-radius: 4px;
@@ -495,6 +602,9 @@ button.reject { background: var(--red); color: #fff; }
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
+.action-msg.team-red { border-left: 3px solid var(--red); }
+.action-msg.team-blue { border-left: 3px solid var(--blue); }
+
 /* Bubbles */
 .bubble {
   max-width: 80%;
@@ -519,12 +629,23 @@ button.reject { background: var(--red); color: #fff; }
   border-bottom-left-radius: 4px;
 }
 
+/* Subtle team tint on non-human bubbles */
+.bubble-team-red:not(.bubble-mine) {
+  border-left: 3px solid var(--red);
+}
+.bubble-team-blue:not(.bubble-mine) {
+  border-left: 3px solid var(--blue);
+}
+
 .bubble-name {
   font-size: 0.72rem;
   font-weight: 700;
   color: var(--muted);
 }
 
+.bubble-mine .bubble-name { color: var(--bubble-mine-name); }
+.bubble-team-red .bubble-name { color: var(--red); }
+.bubble-team-blue .bubble-name { color: var(--blue); }
 .bubble-mine .bubble-name { color: var(--bubble-mine-name); }
 
 .bubble-text {

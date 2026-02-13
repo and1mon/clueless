@@ -9,6 +9,21 @@ function getInitialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+interface LlmPlayerSetup {
+  name: string;
+  model: string;
+  personality: string;
+}
+
+function defaultLlmPlayers(team: TeamColor, count: number): LlmPlayerSetup[] {
+  const prefix = team === 'red' ? 'Red' : 'Blue';
+  return Array.from({ length: count }, (_, i) => ({
+    name: `${prefix}-${i + 1}`,
+    model: '',
+    personality: '',
+  }));
+}
+
 export function App(): JSX.Element {
   const [game, setGame] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,19 +32,21 @@ export function App(): JSX.Element {
   const [guessWord, setGuessWord] = useState('');
   const [hintWord, setHintWord] = useState('');
   const [hintCount, setHintCount] = useState('2');
-  const [chatTab, setChatTab] = useState<'red' | 'blue'>('red');
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const [setup, setSetup] = useState({
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
     humanRole: 'operative' as PlayerRole | 'spectator',
-    redLlm: '2',
-    blueLlm: '3',
+    redCount: 2,
+    blueCount: 3,
     baseUrl: '',
     model: '',
     apiKey: '',
+    redPlayers: defaultLlmPlayers('red', 2),
+    bluePlayers: defaultLlmPlayers('blue', 3),
   });
 
   const isSpectator = setup.humanRole === 'spectator';
@@ -40,12 +57,12 @@ export function App(): JSX.Element {
     localStorage.setItem('clueless-theme', theme);
   }, [theme]);
   const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
   const humanPlayer = useMemo(
     () => game ? Object.values(game.players).find((p) => p.type === 'human') : undefined,
     [game],
   );
   const myTeam = humanPlayer?.team ?? 'red';
-  const enemyTeam: TeamColor = myTeam === 'red' ? 'blue' : 'red';
 
   const playerNames = useMemo(() => {
     if (!game) return {} as Record<string, string>;
@@ -53,12 +70,6 @@ export function App(): JSX.Element {
   }, [game]);
 
   const isMyTurn = game && !isSpectator ? game.turn.activeTeam === myTeam && !game.winner : false;
-
-  // Auto-switch chat tab to the active team
-  useEffect(() => {
-    if (!game || game.winner) return;
-    setChatTab(game.turn.activeTeam);
-  }, [game?.turn.activeTeam, game?.winner]);
 
   // Auto-refresh
   useEffect(() => {
@@ -75,7 +86,7 @@ export function App(): JSX.Element {
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [game?.chats, chatTab]);
+  }, [game?.chatLog]);
 
   const apply = (next: GameState): void => {
     setGame(next);
@@ -85,6 +96,36 @@ export function App(): JSX.Element {
   const newGame = (): void => {
     setGame(null);
     setError('');
+  };
+
+  const updateLlmCount = (team: TeamColor, count: number): void => {
+    const clamped = Math.max(0, Math.min(6, count));
+    const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+    const countKey = team === 'red' ? 'redCount' : 'blueCount';
+    setSetup((s) => {
+      const current = s[key];
+      let next: LlmPlayerSetup[];
+      if (clamped > current.length) {
+        const prefix = team === 'red' ? 'Red' : 'Blue';
+        next = [...current, ...Array.from({ length: clamped - current.length }, (_, i) => ({
+          name: `${prefix}-${current.length + i + 1}`,
+          model: '',
+          personality: '',
+        }))];
+      } else {
+        next = current.slice(0, clamped);
+      }
+      return { ...s, [countKey]: clamped, [key]: next };
+    });
+  };
+
+  const updateLlmPlayer = (team: TeamColor, index: number, field: keyof LlmPlayerSetup, value: string): void => {
+    const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
+    setSetup((s) => {
+      const players = [...s[key]];
+      players[index] = { ...players[index], [field]: value };
+      return { ...s, [key]: players };
+    });
   };
 
   const createGame = async (e: FormEvent): Promise<void> => {
@@ -98,7 +139,19 @@ export function App(): JSX.Element {
           humanName: setup.humanName,
           humanTeam: setup.humanTeam,
           humanRole: setup.humanRole,
-          llmPlayers: { red: Number(setup.redLlm), blue: Number(setup.blueLlm) },
+          llmPlayers: { red: setup.redCount, blue: setup.blueCount },
+          llmPlayerConfigs: {
+            red: setup.redPlayers.map((p) => ({
+              name: p.name || undefined,
+              model: p.model || undefined,
+              personality: p.personality || undefined,
+            })),
+            blue: setup.bluePlayers.map((p) => ({
+              name: p.name || undefined,
+              model: p.model || undefined,
+              personality: p.personality || undefined,
+            })),
+          },
           llm: { baseUrl: setup.baseUrl, model: setup.model, apiKey: setup.apiKey },
         }),
       });
@@ -179,6 +232,55 @@ export function App(): JSX.Element {
 
   // --- SETUP ---
   if (!game) {
+    const renderPlayerList = (team: TeamColor) => {
+      const players = team === 'red' ? setup.redPlayers : setup.bluePlayers;
+      const count = team === 'red' ? setup.redCount : setup.blueCount;
+      return (
+        <div className="team-setup">
+          <div className="team-setup-header">
+            <span className={`team-label ${team}`}>{team === 'red' ? '🔴 Red Team' : '🔵 Blue Team'}</span>
+            <div className="llm-count-ctrl">
+              <button type="button" onClick={() => updateLlmCount(team, count - 1)}>−</button>
+              <span>{count}</span>
+              <button type="button" onClick={() => updateLlmCount(team, count + 1)}>+</button>
+            </div>
+          </div>
+          {players.map((p, i) => {
+            const key = `${team}-${i}`;
+            const isExpanded = expandedPlayer === key;
+            return (
+              <div key={key} className="llm-player-row">
+                <div className="llm-player-summary">
+                  <input
+                    value={p.name}
+                    onChange={(e) => updateLlmPlayer(team, i, 'name', e.target.value)}
+                    placeholder={`${team === 'red' ? 'Red' : 'Blue'}-${i + 1}`}
+                    className="player-name-input"
+                  />
+                  <button type="button" className="expand-btn" onClick={() => setExpandedPlayer(isExpanded ? null : key)}>
+                    {isExpanded ? '▾' : '▸'} Settings
+                  </button>
+                </div>
+                {isExpanded ? (
+                  <div className="llm-player-details">
+                    <label>Model override <input value={p.model} onChange={(e) => updateLlmPlayer(team, i, 'model', e.target.value)} placeholder="Use default" /></label>
+                    <label>Personality
+                      <textarea
+                        value={p.personality}
+                        onChange={(e) => updateLlmPlayer(team, i, 'personality', e.target.value)}
+                        placeholder="e.g. You are bold and decisive. You trust your instincts."
+                        rows={2}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
     return (
       <main className="setup-screen">
         <div className="setup-header">
@@ -187,28 +289,38 @@ export function App(): JSX.Element {
         </div>
         <p className="subtitle">Codenames with LLM teammates</p>
         <form onSubmit={createGame} className="setup-form">
-          <label>Name <input value={setup.humanName} onChange={(e) => setSetup((s) => ({ ...s, humanName: e.target.value }))} /></label>
-          <div className="setup-row">
-            <label>Team
-              <select value={setup.humanTeam} onChange={(e) => setSetup((s) => ({ ...s, humanTeam: e.target.value as TeamColor }))}>
-                <option value="red">Red</option><option value="blue">Blue</option>
-              </select>
-            </label>
-            <label>Role
-              <select value={setup.humanRole} onChange={(e) => setSetup((s) => ({ ...s, humanRole: e.target.value as PlayerRole | 'spectator' }))}>
-                <option value="operative">Operative (guesser)</option>
-                <option value="spymaster">Spymaster (hint-giver)</option>
-                <option value="spectator">Spectator (watch AI play)</option>
-              </select>
-            </label>
-          </div>
-          <div className="setup-row">
-            <label>Red LLMs <input type="number" min={0} value={setup.redLlm} onChange={(e) => setSetup((s) => ({ ...s, redLlm: e.target.value }))} /></label>
-            <label>Blue LLMs <input type="number" min={0} value={setup.blueLlm} onChange={(e) => setSetup((s) => ({ ...s, blueLlm: e.target.value }))} /></label>
-          </div>
-          <label>LLM endpoint <input value={setup.baseUrl} onChange={(e) => setSetup((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="from .env" /></label>
-          <label>Model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
-          <label>API key <input value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} placeholder="from .env" /></label>
+          <fieldset className="setup-fieldset">
+            <legend>You</legend>
+            <label>Name <input value={setup.humanName} onChange={(e) => setSetup((s) => ({ ...s, humanName: e.target.value }))} /></label>
+            <div className="setup-row">
+              <label>Team
+                <select value={setup.humanTeam} onChange={(e) => setSetup((s) => ({ ...s, humanTeam: e.target.value as TeamColor }))}>
+                  <option value="red">Red</option><option value="blue">Blue</option>
+                </select>
+              </label>
+              <label>Role
+                <select value={setup.humanRole} onChange={(e) => setSetup((s) => ({ ...s, humanRole: e.target.value as PlayerRole | 'spectator' }))}>
+                  <option value="operative">Operative</option>
+                  <option value="spymaster">Spymaster</option>
+                  <option value="spectator">Spectator</option>
+                </select>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset className="setup-fieldset">
+            <legend>LLM Players</legend>
+            {renderPlayerList('red')}
+            {renderPlayerList('blue')}
+          </fieldset>
+
+          <fieldset className="setup-fieldset">
+            <legend>LLM Connection</legend>
+            <label>Endpoint <input value={setup.baseUrl} onChange={(e) => setSetup((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="from .env" /></label>
+            <label>Default model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
+            <label>API key <input value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} placeholder="from .env" type="password" /></label>
+          </fieldset>
+
           <button disabled={loading} type="submit">{loading ? 'Starting…' : 'Start Game'}</button>
         </form>
         {error ? <p className="error">{error}</p> : null}
@@ -218,14 +330,13 @@ export function App(): JSX.Element {
 
   // --- GAME ---
   const turn = game.turn;
-  const activeChat = game.chats[chatTab];
   const pendingProposals = isSpectator ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
   const redLeft = game.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
   const blueLeft = game.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
-  const isThinking = game.deliberating[chatTab];
+  const isThinking = game.deliberating.red || game.deliberating.blue;
   const isHumanSpymaster = humanPlayer?.role === 'spymaster';
   const showSpyView = isSpectator || isHumanSpymaster;
-  const canAct = !isSpectator && chatTab === myTeam;
+  const canAct = !isSpectator;
   const hasPendingProposal = pendingProposals.length > 0;
 
   return (
@@ -285,19 +396,9 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        {/* RIGHT: Chat */}
+        {/* RIGHT: Unified Chat */}
         <section className="chat-section">
-          {/* Tab switcher */}
-          <div className="chat-tabs">
-            <button className={chatTab === 'red' ? 'tab active red-tab' : 'tab'} onClick={() => setChatTab('red')}>
-              Red Team
-            </button>
-            <button className={chatTab === 'blue' ? 'tab active blue-tab' : 'tab'} onClick={() => setChatTab('blue')}>
-              Blue Team
-            </button>
-          </div>
-
-          {/* Actions — only when playing (not spectating) and viewing own team */}
+          {/* Actions — only when playing */}
           {canAct ? (
             <div className="actions">
               {isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? (
@@ -335,11 +436,12 @@ export function App(): JSX.Element {
             </div>
           ) : null}
 
-          {/* Chat log */}
+          {/* Unified chat log */}
           <div className="chat-log">
-            {activeChat.map((msg) => {
+            {game.chatLog.map((msg) => {
               const isHuman = msg.playerId === humanPlayer?.id;
               const isSystem = msg.kind === 'system' || msg.kind === 'proposal';
+              const msgTeam = msg.team;
               const isAction = isSystem && (
                 msg.content.includes('Revealed') ||
                 msg.content.includes('voted') ||
@@ -352,9 +454,9 @@ export function App(): JSX.Element {
               return (
                 <div key={msg.id} className={`bubble-row ${isSystem ? 'system-row' : isHuman ? 'mine' : 'theirs'}`}>
                   {isSystem ? (
-                    <div className={isAction ? 'action-msg' : 'system-msg'}>{msg.content}</div>
+                    <div className={`${isAction ? 'action-msg' : 'system-msg'} team-${msgTeam}`}>{msg.content}</div>
                   ) : (
-                    <div className={`bubble ${isHuman ? 'bubble-mine' : 'bubble-theirs'}`}>
+                    <div className={`bubble ${isHuman ? 'bubble-mine' : 'bubble-theirs'} bubble-team-${msgTeam}`}>
                       <span className="bubble-name">{msg.playerName}</span>
                       <span className="bubble-text">{msg.content}</span>
                     </div>
@@ -373,7 +475,7 @@ export function App(): JSX.Element {
           </div>
 
           {/* Chat input — only when playing */}
-          {!isSpectator && chatTab === myTeam ? (
+          {!isSpectator ? (
             <div className="chat-input">
               <input
                 placeholder="Talk to your team…"

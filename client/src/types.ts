@@ -14,6 +14,8 @@ export interface Player {
   type: 'human' | 'llm';
   role: PlayerRole;
   team: TeamColor;
+  model?: string;
+  personality?: string;
 }
 
 export interface Message {
@@ -44,7 +46,7 @@ export interface GameState {
   cards: Card[];
   players: Record<string, Player>;
   teams: Record<TeamColor, { color: TeamColor; players: string[] }>;
-  chats: Record<TeamColor, Message[]>;
+  chatLog: Message[];
   proposals: Record<TeamColor, Proposal[]>;
   turn: {
     activeTeam: TeamColor;

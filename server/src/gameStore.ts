@@ -89,18 +89,21 @@ function createPlayers(input: CreateGameInput): {
   // Create LLMs
   (['red', 'blue'] as TeamColor[]).forEach((team) => {
     const llmCount = llmPerTeam[team] ?? 0;
+    const configs = input.llmPlayerConfigs?.[team] ?? [];
     for (let i = 0; i < llmCount; i += 1) {
+      const cfg = configs[i];
       const id = `llm-${team}-${i + 1}-${randomUUID()}`;
-      const name = `${team === 'red' ? 'Red' : 'Blue'}-${i + 1}`;
-      const personality = shuffledPersonalities[personalityIdx % shuffledPersonalities.length];
+      const defaultName = `${team === 'red' ? 'Red' : 'Blue'}-${i + 1}`;
+      const defaultPersonality = shuffledPersonalities[personalityIdx % shuffledPersonalities.length];
       personalityIdx += 1;
       players[id] = {
         id,
-        name,
+        name: cfg?.name?.trim() || defaultName,
         role: 'operative',
         team,
         type: 'llm',
-        personality,
+        personality: cfg?.personality?.trim() || defaultPersonality,
+        model: cfg?.model?.trim() || undefined,
       };
       teams[team].players.push(id);
     }
@@ -160,7 +163,7 @@ export function createGame(input: CreateGameInput): GameState {
       guessesMade: 0,
       maxGuesses: 0,
     },
-    chats: { red: [], blue: [] },
+    chatLog: [],
     proposals: { red: [], blue: [] },
     llmConfig: {
       baseUrl: input.llm?.baseUrl?.trim() || DEFAULT_LLM.baseUrl,
@@ -203,7 +206,7 @@ function addMessage(
 ): void {
   const player = game.players[playerId];
   if (!player) throw new Error('Unknown player.');
-  game.chats[team].push({
+  game.chatLog.push({
     id: randomUUID(),
     team,
     playerId,

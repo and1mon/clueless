@@ -18,6 +18,7 @@ export interface Player {
   role: PlayerRole;
   team: TeamColor;
   personality?: string;
+  model?: string;
 }
 
 export interface TeamState {
@@ -69,7 +70,7 @@ export interface GameState {
   cards: Card[];
   players: Record<string, Player>;
   teams: Record<TeamColor, TeamState>;
-  chats: Record<TeamColor, Message[]>;
+  chatLog: Message[];
   proposals: Record<TeamColor, Proposal[]>;
   turn: TurnState;
   winner?: TeamColor;
@@ -78,10 +79,17 @@ export interface GameState {
   deliberating: Record<TeamColor, boolean>;
 }
 
+export interface LlmPlayerInput {
+  name?: string;
+  model?: string;
+  personality?: string;
+}
+
 export interface CreateGameInput {
   humanName?: string;
   humanTeam?: TeamColor;
   humanRole?: PlayerRole | 'spectator';
   llmPlayers?: Partial<Record<TeamColor, number>>;
+  llmPlayerConfigs?: Partial<Record<TeamColor, LlmPlayerInput[]>>;
   llm?: Partial<LlmConfig>;
 }

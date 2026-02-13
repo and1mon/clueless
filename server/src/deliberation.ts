@@ -49,12 +49,15 @@ async function runOnePlayer(
   if (player.role === 'spymaster' && game.turn.phase === 'guess') return false;
 
   const pending = game.proposals[team].filter((p) => p.status === 'pending');
-  const chatHistory = game.chats[team].map((m) => ({
-    name: m.playerName,
-    content: m.content,
-  }));
+  const chatHistory = game.chatLog
+    .filter((m) => m.team === team)
+    .map((m) => ({ name: m.playerName, content: m.content }));
 
-  const client = new LlmClient(game.llmConfig);
+  // Use per-player model override if set, otherwise fall back to global config
+  const playerConfig = player.model
+    ? { ...game.llmConfig, model: player.model }
+    : game.llmConfig;
+  const client = new LlmClient(playerConfig);
   const boardWords = game.cards.map((c) => c.word.toLowerCase());
 
   // For spymaster hints, retry up to 5 times if the hint word is on the board
@@ -158,6 +161,7 @@ export async function runTeammateRound(gameId: string, team: TeamColor): Promise
 
 /**
  * If the active team has an LLM spymaster and it's hint phase, auto-trigger the spymaster.
+ * After a successful hint, triggers an operative discussion round.
  */
 export async function autoSpymasterHint(gameId: string, team: TeamColor): Promise<void> {
   const game = getGame(gameId);
@@ -177,6 +181,12 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
     setDeliberating(gameId, team, false);
     releaseLock(gameId, team);
   }
+
+  // After hint is given, kick off operative discussion
+  const updated = getGame(gameId);
+  if (!updated.winner && updated.turn.activeTeam === team && updated.turn.phase === 'guess') {
+    await runTeammateRound(gameId, team);
+  }
 }
 
 /**
@@ -187,6 +197,21 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
   if (!acquireLock(gameId, team)) return;
   try {
     setDeliberating(gameId, team, true);
+
+    // If it starts in hint phase, trigger spymaster first
+    {
+      const game = getGame(gameId);
+      if (!game.winner && game.turn.activeTeam === team && game.turn.phase === 'hint') {
+        const spymaster = game.teams[team].players
+          .map((id) => game.players[id])
+          .find((p) => p.role === 'spymaster' && p.type === 'llm');
+        if (spymaster) {
+          await sleep(1500);
+          await runOnePlayer(gameId, team, spymaster.id);
+        }
+      }
+    }
+
     for (let round = 0; round < maxRounds; round += 1) {
       const game = getGame(gameId);
       if (game.winner || game.turn.activeTeam !== team) return;
