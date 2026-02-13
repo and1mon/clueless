@@ -11,19 +11,21 @@ export interface LlmResponse {
 }
 
 function extractJson(raw: string): unknown {
-  const direct = raw.trim();
-  if (direct.startsWith('{') && direct.endsWith('}')) return JSON.parse(direct);
+  // Strip <think>...</think> blocks from reasoning models (e.g. Qwen3, DeepSeek)
+  let cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-  const fenced = direct.match(/```json\s*([\s\S]*?)\s*```/i);
-  if (fenced?.[1]) return JSON.parse(fenced[1]);
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) return JSON.parse(cleaned);
 
-  const firstBrace = direct.indexOf('{');
-  const lastBrace = direct.lastIndexOf('}');
+  const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) return JSON.parse(fenced[1].trim());
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
   if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return JSON.parse(direct.slice(firstBrace, lastBrace + 1));
+    return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
   }
 
-  throw new Error(`Not valid JSON: ${raw.slice(0, 200)}`);
+  throw new Error(`Not valid JSON: ${raw.slice(0, 300)}`);
 }
 
 function parseResponse(data: unknown): LlmResponse {
@@ -107,16 +109,16 @@ export class LlmClient {
         `You are the SPYMASTER for team ${team.toUpperCase()}.`,
         '',
         `YOUR TEAM'S WORDS (you want your team to guess these): ${myWords.join(', ')}`,
-        `ENEMY WORDS (${enemyTeam} — AVOID, guessing these helps the enemy): ${enemyWords.join(', ')}`,
-        `ASSASSIN (NEVER let your team guess this — instant loss): ${assassinWords.join(', ')}`,
-        `NEUTRAL (not helpful, wastes a guess): ${neutralWords.join(', ')}`,
-        revealedWords.length ? `ALREADY REVEALED: ${revealedWords.join(', ')}` : '',
+        `ENEMY WORDS (${enemyTeam} — DANGEROUS! If your hint accidentally matches these, the enemy scores): ${enemyWords.join(', ')}`,
+        `ASSASSIN (INSTANT LOSS if your team guesses this!): ${assassinWords.join(', ')}`,
+        `NEUTRAL (wastes a guess, avoid): ${neutralWords.join(', ')}`,
+        revealedWords.length ? `ALREADY REVEALED (ignore these): ${revealedWords.join(', ')}` : '',
         '',
         'YOUR TASK: Give a ONE-WORD hint and a number.',
-        '- The hint should connect as many of YOUR team\'s words as possible.',
+        '- The hint should connect as many of YOUR TEAM\'s words as possible.',
         '- The hint must NOT be any word on the board (including revealed words).',
-        '- Avoid hints that could lead to enemy or assassin words.',
-        '- The number is how many of your words relate to the hint.',
+        '- CRITICAL: Before choosing a hint, CHECK if it could also match any ENEMY or ASSASSIN words. If it does, pick a DIFFERENT hint. It is better to give a safe hint for 1-2 words than a risky hint that could match enemy words.',
+        '- The number is how many of YOUR TEAM\'s words relate to the hint.',
         '',
         `FORBIDDEN WORDS (your hint MUST NOT be any of these): ${allBoardWords.join(', ')}`,
         '',
@@ -130,6 +132,7 @@ export class LlmClient {
         'Your message should be empty or "...".',
       ].join('\n');
     } else if (!isHintPhase) {
+      const hasPending = input.pendingProposals.length > 0;
       roleInstructions = [
         `You are an OPERATIVE on team ${team}.`,
         `The hint is: "${game.turn.hintWord}" (${game.turn.hintCount})`,
@@ -139,13 +142,16 @@ export class LlmClient {
         'In your message, share your reasoning with your team. Discuss, agree, or disagree.',
         '',
         'Available actions (pick ONE or none):',
-        '  {"type":"propose_guess","word":"boardword"} — propose a guess',
-        '  {"type":"propose_end_turn"} — propose stopping',
-        '  {"type":"vote","proposalId":"...","decision":"accept|reject"} — vote on pending proposal',
+        hasPending
+          ? '  THERE IS A PENDING PROPOSAL — you MUST vote on it: {"type":"vote","proposalId":"...","decision":"accept"|"reject"}'
+          : '  {"type":"propose_guess","word":"boardword"} — propose a guess\n  {"type":"propose_end_turn"} — propose stopping',
         '  {"type":"none"} — just discuss, no action yet',
         '',
-        'IMPORTANT: If someone already proposed something, VOTE on it instead of making a new proposal.',
-        'Only propose words that are on the board and not yet revealed.',
+        'RULES:',
+        '- Only ONE proposal can be pending at a time. If there is one, you MUST vote on it.',
+        '- You CANNOT vote on your own proposal.',
+        '- Do NOT propose a word that is already revealed.',
+        '- Only propose words that are actually on the board.',
       ].join('\n');
     } else {
       roleInstructions = [
@@ -211,6 +217,7 @@ export class LlmClient {
         body: JSON.stringify({
           model: this.config.model,
           temperature: 0.7,
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: system },
             ...chatMessages,

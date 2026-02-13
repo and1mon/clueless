@@ -2,6 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { apiRequest } from './api';
 import { type GameState, type PlayerRole, type TeamColor } from './types';
 
+type Theme = 'light' | 'dark';
+function getInitialTheme(): Theme {
+  const saved = localStorage.getItem('clueless-theme') as Theme | null;
+  if (saved) return saved;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 export function App(): JSX.Element {
   const [game, setGame] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -11,6 +18,7 @@ export function App(): JSX.Element {
   const [hintWord, setHintWord] = useState('');
   const [hintCount, setHintCount] = useState('2');
   const [chatTab, setChatTab] = useState<'red' | 'blue'>('red');
+  const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [setup, setSetup] = useState({
@@ -25,6 +33,13 @@ export function App(): JSX.Element {
   });
 
   const isSpectator = setup.humanRole === 'spectator';
+
+  // Apply theme
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('clueless-theme', theme);
+  }, [theme]);
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
   const humanPlayer = useMemo(
     () => game ? Object.values(game.players).find((p) => p.type === 'human') : undefined,
     [game],
@@ -166,8 +181,11 @@ export function App(): JSX.Element {
   if (!game) {
     return (
       <main className="setup-screen">
-        <h1>��️ Clueless</h1>
-        <p className="subtitle">Codenames with local LLM teammates</p>
+        <div className="setup-header">
+          <h1>🕵️ Clueless</h1>
+          <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
+        </div>
+        <p className="subtitle">Codenames with LLM teammates</p>
         <form onSubmit={createGame} className="setup-form">
           <label>Name <input value={setup.humanName} onChange={(e) => setSetup((s) => ({ ...s, humanName: e.target.value }))} /></label>
           <div className="setup-row">
@@ -208,32 +226,17 @@ export function App(): JSX.Element {
   const isHumanSpymaster = humanPlayer?.role === 'spymaster';
   const showSpyView = isSpectator || isHumanSpymaster;
   const canAct = !isSpectator && chatTab === myTeam;
+  const hasPendingProposal = pendingProposals.length > 0;
 
   return (
     <main className="game-screen">
       <header className="topbar">
         <h1>Clueless</h1>
-        <div className="score">
-          <span className="red-score">{redLeft}</span>
-          <span className="sep">–</span>
-          <span className="blue-score">{blueLeft}</span>
-        </div>
-        <div className="turn-info">
-          {game.winner ? (
-            <span className="winner">🏆 {game.winner} wins!</span>
-          ) : (
-            <>
-              <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
-              {turn.phase === 'hint' ? (
-                <span className="phase">Waiting for hint…</span>
-              ) : (
-                <span className="hint-display">🔎 "{turn.hintWord}" ({turn.hintCount}) — guesses {turn.guessesMade}/{turn.maxGuesses}</span>
-              )}
-            </>
-          )}
-        </div>
         {isSpectator ? <span className="spectator-badge">👁 Spectating</span> : null}
-        <button className="new-game-btn" onClick={newGame}>New Game</button>
+        <div className="topbar-right">
+          <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
+          <button className="new-game-btn" onClick={newGame}>New Game</button>
+        </div>
       </header>
 
       {error ? <p className="error">{error}</p> : null}
@@ -241,6 +244,28 @@ export function App(): JSX.Element {
       <div className="game-layout">
         {/* LEFT: Board */}
         <section className="board-section">
+          <div className="board-info">
+            <div className="score-bar">
+              <span className="team-score red-score">{redLeft} <small>red</small></span>
+              <span className="sep">—</span>
+              <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
+            </div>
+            {game.winner ? (
+              <div className="game-status winner-banner">🏆 {game.winner} wins!</div>
+            ) : turn.phase === 'guess' && turn.hintWord ? (
+              <div className="game-status">
+                <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
+                <span className="hint-word">"{turn.hintWord}"</span>
+                <span className="hint-count">{turn.hintCount}</span>
+                <span className="hint-progress">{turn.guessesMade} / {turn.maxGuesses} guesses</span>
+              </div>
+            ) : (
+              <div className="game-status">
+                <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
+                <span className="phase">Waiting for hint…</span>
+              </div>
+            )}
+          </div>
           <div className="board-grid">
             {game.cards.map((card) => {
               const showOwner = showSpyView && card.owner !== 'neutral' && !card.revealed;
@@ -249,7 +274,7 @@ export function App(): JSX.Element {
                   key={card.word}
                   type="button"
                   className={`card ${card.revealed ? `revealed ${card.owner}` : 'hidden'} ${showOwner ? `spy-${card.owner}` : ''}`}
-                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isHumanSpymaster}
+                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isHumanSpymaster || hasPendingProposal}
                   onClick={() => proposeGuess(card.word)}
                   title={showOwner ? card.owner : undefined}
                 >
@@ -283,7 +308,7 @@ export function App(): JSX.Element {
                 </div>
               ) : null}
 
-              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster ? (
+              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && !hasPendingProposal ? (
                 <div className="action-row">
                   <input placeholder="Guess a word (or click the board)" value={guessWord} onChange={(e) => setGuessWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') proposeGuess(); }} />
                   <button onClick={() => proposeGuess()}>Propose</button>
@@ -291,19 +316,22 @@ export function App(): JSX.Element {
                 </div>
               ) : null}
 
-              {pendingProposals.length > 0 ? (
-                <div className="proposals">
-                  {pendingProposals.map((p) => (
-                    <div key={p.id} className="proposal-card">
-                      <span>{p.kind === 'guess' ? `Guess "${p.payload.word}"` : 'End turn'} — {playerNames[p.createdBy]}</span>
+              {pendingProposals.map((p) => {
+                const isOwnProposal = p.createdBy === humanPlayer?.id;
+                return (
+                  <div key={p.id} className="proposal-card">
+                    <span className="proposal-label">{p.kind === 'guess' ? `Guess "${p.payload.word}"` : 'End turn'} — {playerNames[p.createdBy]}</span>
+                    {!isOwnProposal ? (
                       <div className="vote-buttons">
-                        <button onClick={() => vote(p.id, 'accept')} className="accept">✓ Yes</button>
-                        <button onClick={() => vote(p.id, 'reject')} className="reject">✗ No</button>
+                        <button onClick={() => vote(p.id, 'accept')} className="accept">✓ Accept</button>
+                        <button onClick={() => vote(p.id, 'reject')} className="reject">✗ Reject</button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+                    ) : (
+                      <span className="waiting-votes">Waiting for votes…</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
 
@@ -312,10 +340,19 @@ export function App(): JSX.Element {
             {activeChat.map((msg) => {
               const isHuman = msg.playerId === humanPlayer?.id;
               const isSystem = msg.kind === 'system' || msg.kind === 'proposal';
+              const isAction = isSystem && (
+                msg.content.includes('Revealed') ||
+                msg.content.includes('voted') ||
+                msg.content.includes('proposes') ||
+                msg.content.includes('Spymaster') ||
+                msg.content.includes('end their turn') ||
+                msg.content.includes('rejected') ||
+                msg.content.includes('Game over')
+              );
               return (
                 <div key={msg.id} className={`bubble-row ${isSystem ? 'system-row' : isHuman ? 'mine' : 'theirs'}`}>
                   {isSystem ? (
-                    <div className="system-msg">{msg.content}</div>
+                    <div className={isAction ? 'action-msg' : 'system-msg'}>{msg.content}</div>
                   ) : (
                     <div className={`bubble ${isHuman ? 'bubble-mine' : 'bubble-theirs'}`}>
                       <span className="bubble-name">{msg.playerName}</span>

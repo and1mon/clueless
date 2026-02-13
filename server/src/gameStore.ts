@@ -124,14 +124,13 @@ function createPlayers(input: CreateGameInput): {
   return { players, teams };
 }
 
-function createCards(startingTeam: TeamColor): GameState['cards'] {
+function createCards(_startingTeam: TeamColor): GameState['cards'] {
   const words = shuffle(WORD_POOL).slice(0, 25);
   const owners: Array<'red' | 'blue' | 'neutral' | 'assassin'> = [];
-  const startingCount = startingTeam === 'red' ? 9 : 8;
-  const otherCount = startingTeam === 'red' ? 8 : 9;
 
-  for (let i = 0; i < startingCount; i += 1) owners.push('red');
-  for (let i = 0; i < otherCount; i += 1) owners.push('blue');
+  // Equal teams: 8 red, 8 blue, 1 assassin, 8 neutral
+  for (let i = 0; i < 8; i += 1) owners.push('red');
+  for (let i = 0; i < 8; i += 1) owners.push('blue');
   owners.push('assassin');
   while (owners.length < 25) owners.push('neutral');
   const shuffledOwners = shuffle(owners);
@@ -329,6 +328,10 @@ export function createProposal(
   if (game.turn.activeTeam !== team) throw new Error('Not your turn.');
   if (game.turn.phase !== 'guess') throw new Error('Wait for the spymaster hint first.');
 
+  // Only one pending proposal at a time
+  const hasPending = game.proposals[team].some((p) => p.status === 'pending');
+  if (hasPending) throw new Error('There is already a pending proposal. Vote on it first.');
+
   if (kind === 'guess') {
     if (!payload.word?.trim()) throw new Error('Guess must include a word.');
   }
@@ -364,12 +367,15 @@ export function voteOnProposal(
   const proposal = game.proposals[team].find((p) => p.id === proposalId);
   if (!proposal) throw new Error('Proposal not found.');
   if (proposal.status !== 'pending') throw new Error('Proposal already resolved.');
+  if (proposal.createdBy === playerId) throw new Error('You cannot vote on your own proposal.');
 
   proposal.votes[playerId] = decision;
   addMessage(game, team, playerId, `${game.players[playerId].name} voted ${decision}`, 'chat', proposal.id);
 
+  // Count votes excluding the proposer
   const votes = Object.values(proposal.votes);
-  const threshold = requiredVotes(operativeCount(game, team));
+  const voterCount = operativeCount(game, team) - 1; // exclude proposer
+  const threshold = requiredVotes(Math.max(1, voterCount));
   const accepts = votes.filter((v) => v === 'accept').length;
   const rejects = votes.filter((v) => v === 'reject').length;
 
