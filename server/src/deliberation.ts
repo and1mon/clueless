@@ -11,8 +11,10 @@ import {
 } from './gameStore.js';
 import { LlmClient } from './llmClient.js';
 import { type TeamColor } from './types.js';
+import { waitForTtsAck } from './ttsGate.js';
 
 const locks = new Map<string, boolean>();
+const failureCounts = new Map<string, number>(); // track consecutive failures per team
 
 function lockKey(gameId: string, team: TeamColor): string {
   return `${gameId}:${team}`;
@@ -89,6 +91,18 @@ async function runOnePlayer(
         }
       }
 
+      // If the team has been failing repeatedly, add a strong warning
+      const teamFailures = failureCounts.get(lockKey(gameId, team)) || 0;
+      if (teamFailures >= 3 && player.role === 'operative') {
+        const availableWords = game.cards
+          .filter((c) => !c.revealed)
+          .map((c) => c.word);
+        extraHistory = [...extraHistory, {
+          name: 'System',
+          content: `🚨 CRITICAL: Your team has made ${teamFailures} invalid guesses in a row. You keep proposing words that are already revealed or not on the board. Here are the ONLY valid words you can guess: ${availableWords.join(', ')}. If you cannot decide, propose ending the turn instead.`
+        }];
+      }
+
       const response = await client.getResponse({
         game,
         player,
@@ -124,12 +138,16 @@ async function runOnePlayer(
         if (action.type === 'propose_guess') {
           try {
             createProposal(gameId, team, player.id, 'guess', { word: action.word });
+            // Reset failure counter on successful proposal
+            failureCounts.set(lockKey(gameId, team), 0);
           } catch (propErr) {
             const errMsg = propErr instanceof Error ? propErr.message : String(propErr);
-            if (errMsg.includes('not on the board') || errMsg.includes('already been revealed')) {
-              // Invalid guess word — log and continue (LLM will see it failed in next round)
+            if (errMsg.includes('not on the board') || errMsg.includes('already been revealed') || errMsg.includes('already a pending proposal')) {
               console.log(`LLM ${player.name} proposed invalid guess "${action.word}": ${errMsg}`);
               postChatMessage(gameId, team, player.id, `❌ Cannot guess "${action.word}" — ${errMsg}`);
+              // Increment failure counter
+              const key = lockKey(gameId, team);
+              failureCounts.set(key, (failureCounts.get(key) || 0) + 1);
               return false;
             }
             throw propErr; // Re-throw other errors
@@ -159,23 +177,32 @@ async function runOnePlayer(
 
 /**
  * One round = each LLM on the team speaks once, in order, with a delay between.
+ * Returns true if the team should keep going, false if stuck and should forfeit.
  */
 async function runConversationRound(
   gameId: string,
   team: TeamColor,
-  delayMs: number,
-): Promise<void> {
+): Promise<boolean> {
   const game = getGame(gameId);
   const llmPlayers = getTeamLlmPlayers(game, team);
-  if (!llmPlayers.length) return;
+  if (!llmPlayers.length) return false;
 
   for (const player of llmPlayers) {
     const current = getGame(gameId);
-    if (current.winner || current.turn.activeTeam !== team) return;
+    if (current.winner || current.turn.activeTeam !== team) return true;
 
     await runOnePlayer(gameId, team, player.id);
-    await sleep(delayMs);
+    await waitForTtsAck(gameId);
+
+    // Check if too many consecutive failures — forfeit
+    const failures = failureCounts.get(lockKey(gameId, team)) || 0;
+    if (failures >= 6) {
+      console.error(`Team ${team} hit ${failures} consecutive failures, forfeiting`);
+      forfeitTurn(gameId, team, `Team ${team} kept making invalid moves. Turn forfeited.`);
+      return false;
+    }
   }
+  return true;
 }
 
 /**
@@ -185,7 +212,8 @@ export async function runTeammateRound(gameId: string, team: TeamColor): Promise
   if (!acquireLock(gameId, team)) return;
   try {
     setDeliberating(gameId, team, true);
-    await runConversationRound(gameId, team, 1500);
+    const ok = await runConversationRound(gameId, team);
+    if (!ok) return; // Team was forfeited due to stuck behavior
   } finally {
     setDeliberating(gameId, team, false);
     releaseLock(gameId, team);
@@ -200,6 +228,9 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
   const game = getGame(gameId);
   if (game.winner || game.turn.activeTeam !== team || game.turn.phase !== 'hint') return;
 
+  // Reset failure counter for this turn
+  failureCounts.set(lockKey(gameId, team), 0);
+
   const spymaster = game.teams[team].players
     .map((id) => game.players[id])
     .find((p) => p.role === 'spymaster');
@@ -208,7 +239,7 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
   if (!acquireLock(gameId, team)) return;
   try {
     setDeliberating(gameId, team, true);
-    await sleep(1500);
+    await waitForTtsAck(gameId);
     const success = await runOnePlayer(gameId, team, spymaster.id);
     
     // If spymaster failed to produce a valid hint after all retries, forfeit the turn
@@ -232,6 +263,7 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
 /**
  * When the active team is all-LLM: run conversation rounds until their turn ends.
  * Keeps going as long as it's still their turn (they may have multiple guesses).
+ * Forfeits if LLMs get stuck (too many rounds without progress).
  */
 export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds = 20): Promise<void> {
   if (!acquireLock(gameId, team)) return;
@@ -246,16 +278,51 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
           .map((id) => game.players[id])
           .find((p) => p.role === 'spymaster' && p.type === 'llm');
         if (spymaster) {
-          await sleep(1500);
-          await runOnePlayer(gameId, team, spymaster.id);
+          await waitForTtsAck(gameId);
+          const success = await runOnePlayer(gameId, team, spymaster.id);
+          if (!success) {
+            console.error(`Spymaster ${spymaster.name} failed in full LLM turn, forfeiting`);
+            forfeitTurn(gameId, team, `${spymaster.name} could not provide a valid hint. Turn forfeited.`);
+            return;
+          }
         }
       }
     }
 
+    let staleRounds = 0;
+    const MAX_STALE = 5; // forfeit after 5 rounds with no progress
+
     for (let round = 0; round < maxRounds; round += 1) {
       const game = getGame(gameId);
       if (game.winner || game.turn.activeTeam !== team) return;
-      await runConversationRound(gameId, team, 1200);
+
+      const guessCountBefore = game.turn.guessesMade;
+      const phaseBefore = game.turn.phase;
+
+      const ok = await runConversationRound(gameId, team);
+      if (!ok) return; // Forfeited due to stuck behavior
+
+      // Check if progress was made (guess resolved, phase changed, or turn switched)
+      const after = getGame(gameId);
+      if (after.winner || after.turn.activeTeam !== team) return; // Turn ended naturally
+      const madeProgress = after.turn.guessesMade > guessCountBefore || after.turn.phase !== phaseBefore;
+
+      if (madeProgress) {
+        staleRounds = 0;
+      } else {
+        staleRounds++;
+        if (staleRounds >= MAX_STALE) {
+          console.error(`Team ${team} stuck for ${MAX_STALE} rounds, forfeiting turn`);
+          forfeitTurn(gameId, team, `Team ${team} couldn't make progress. Turn forfeited.`);
+          return;
+        }
+      }
+    }
+
+    // If we hit maxRounds, forfeit
+    const game = getGame(gameId);
+    if (!game.winner && game.turn.activeTeam === team) {
+      forfeitTurn(gameId, team, `Team ${team} took too long deliberating. Turn forfeited.`);
     }
   } finally {
     setDeliberating(gameId, team, false);

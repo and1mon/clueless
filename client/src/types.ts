@@ -16,6 +16,7 @@ export interface Player {
   team: TeamColor;
   model?: string;
   personality?: string;
+  voice?: string;
 }
 
 export interface Message {
@@ -59,5 +60,6 @@ export interface GameState {
   winner?: TeamColor;
   loserReason?: string;
   deliberating: Record<TeamColor, boolean>;
+  llmConfig: { baseUrl: string; model: string };
   llmError?: string;
 }

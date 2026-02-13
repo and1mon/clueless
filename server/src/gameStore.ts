@@ -12,6 +12,17 @@ import {
 
 const games = new Map<string, GameState>();
 
+const VOICE_POOL = [
+  'af_heart', 'af_bella', 'af_aoede', 'af_kore', 'af_sarah', 'af_sky',
+  'am_fenrir', 'am_michael', 'am_puck', 'am_adam', 'am_eric',
+  'bf_emma', 'bf_isabella', 'bf_alice',
+  'bm_george', 'bm_fable', 'bm_daniel', 'bm_lewis',
+];
+
+function pickVoice(index: number): string {
+  return VOICE_POOL[index % VOICE_POOL.length];
+}
+
 const DEFAULT_LLM = {
   baseUrl: process.env.LLM_BASE_URL || 'http://localhost:8082/v1',
   model: process.env.LLM_MODEL || 'Qwen3-VL-8B-Instruct-Q8_0',
@@ -104,6 +115,7 @@ function createPlayers(input: CreateGameInput): {
         type: 'llm',
         personality: cfg?.personality?.trim() || defaultPersonality,
         model: cfg?.model?.trim() || undefined,
+        voice: pickVoice(personalityIdx - 1),
       };
       teams[team].players.push(id);
     }
@@ -283,8 +295,7 @@ function switchTurn(game: GameState): void {
 function finishGame(game: GameState, winner: TeamColor, reason: string): void {
   game.winner = winner;
   game.loserReason = reason;
-  addSystemMessage(game, 'red', `🏁 Game over — ${winner} wins! (${reason})`);
-  addSystemMessage(game, 'blue', `🏁 Game over — ${winner} wins! (${reason})`);
+  addSystemMessage(game, winner, `🏁 Game over — ${winner} wins! (${reason})`);
 }
 
 function resolveGuess(game: GameState, team: TeamColor, guessWord: string): void {
@@ -337,7 +348,7 @@ export function createProposal(
 
   if (kind === 'guess') {
     if (!payload.word?.trim()) throw new Error('Guess must include a word.');
-    
+
     // Validate the word exists on the board and is not already revealed
     const word = payload.word.trim().toLowerCase();
     const card = game.cards.find((c) => c.word.toLowerCase() === word);

@@ -19,6 +19,7 @@ export interface Player {
   team: TeamColor;
   personality?: string;
   model?: string;
+  voice?: string;
 }
 
 export interface TeamState {

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import { apiRequest } from './api';
 import { type GameState, type Player, type PlayerRole, type TeamColor } from './types';
@@ -129,6 +129,118 @@ export function App(): JSX.Element {
   const lastMsgCount = useRef(0);
   const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
+
+  // TTS state — browser-side generation via kokoro-js (Web Worker)
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsLoading, setTtsLoading] = useState(false);
+  const autoPlay = true;
+  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
+  const [ttsQueueVersion, setTtsQueueVersion] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsStartIdx = useRef(-1);
+  const ttsCache = useRef<Map<string, string>>(new Map());
+  const ttsGenerating = useRef<Set<string>>(new Set());
+  const ttsAutoPlayQueue = useRef<string[]>([]);
+
+  const playAudio = useCallback((blobUrl: string, msgId: string) => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    const audio = new Audio(blobUrl);
+    audioRef.current = audio;
+    setPlayingMsgId(msgId);
+    audio.onended = () => {
+      setPlayingMsgId(null);
+      audioRef.current = null;
+    };
+    audio.onerror = () => {
+      setPlayingMsgId(null);
+      audioRef.current = null;
+    };
+    audio.play().catch(() => setPlayingMsgId(null));
+  }, []);
+
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPlayingMsgId(null);
+  }, []);
+
+  const cleanupTts = useCallback(() => {
+    for (const url of ttsCache.current.values()) {
+      URL.revokeObjectURL(url);
+    }
+    ttsCache.current.clear();
+    ttsGenerating.current.clear();
+    ttsAutoPlayQueue.current = [];
+    ttsStartIdx.current = -1;
+    import('./ttsService').then(({ disposeTTS }) => disposeTTS());
+  }, []);
+
+  // Clean up TTS blob URLs and worker on unmount
+  useEffect(() => {
+    return () => cleanupTts();
+  }, [cleanupTts]);
+
+  // Generate TTS for new chat messages (only those arriving after TTS was enabled)
+  useEffect(() => {
+    if (!game || !ttsEnabled || ttsLoading) return;
+    const log = game.chatLog;
+    if (ttsStartIdx.current < 0) {
+      ttsStartIdx.current = log.length;
+      return;
+    }
+    // Process one message at a time; advance index past skipped/dispatched messages
+    for (let i = ttsStartIdx.current; i < log.length; i++) {
+      const msg = log[i];
+      if (msg.kind !== 'chat' || msg.content === '...') {
+        ttsStartIdx.current = i + 1;
+        continue;
+      }
+      if (ttsCache.current.has(msg.id) || ttsGenerating.current.has(msg.id)) {
+        ttsStartIdx.current = i + 1;
+        continue;
+      }
+      const player = game.players[msg.playerId];
+      const voice = player?.voice || 'af_heart';
+      ttsGenerating.current.add(msg.id);
+      import('./ttsService').then(({ generateTTS }) => {
+        generateTTS(msg.content, voice).then((blobUrl) => {
+          ttsGenerating.current.delete(msg.id);
+          if (blobUrl) {
+            ttsCache.current.set(msg.id, blobUrl);
+            if (autoPlay) {
+              ttsAutoPlayQueue.current.push(msg.id);
+              setTtsQueueVersion((v) => v + 1);
+            }
+          }
+          // Signal server that TTS is done so LLM deliberation can continue
+          if (game) {
+            apiRequest(`/api/games/${game.id}/tts-ack`, { method: 'POST', body: '{}' }).catch(() => {});
+          }
+        });
+      });
+      ttsStartIdx.current = i + 1;
+      break; // Only start one generation at a time
+    }
+  }, [game?.chatLog.length, ttsEnabled, ttsLoading, autoPlay]);
+
+  // Auto-play queued TTS messages
+  useEffect(() => {
+    if (!ttsEnabled || !autoPlay || audioRef.current) return;
+    const queue = ttsAutoPlayQueue.current;
+    while (queue.length > 0) {
+      const msgId = queue.shift()!;
+      const blobUrl = ttsCache.current.get(msgId);
+      if (blobUrl) {
+        playAudio(blobUrl, msgId);
+        return;
+      }
+    }
+  }, [ttsEnabled, autoPlay, playAudio, playingMsgId, ttsQueueVersion]);
 
   // Detect LLM config errors and go back to setup
   useEffect(() => {
@@ -461,6 +573,34 @@ export function App(): JSX.Element {
         <h1>Clueless</h1>
         {isSpectator ? <span className="spectator-badge">👁 Spectating</span> : null}
         <div className="topbar-right">
+          <button
+            className={`tts-toggle ${ttsEnabled ? 'active' : ''}`}
+            onClick={() => {
+              if (!ttsEnabled) {
+                setTtsEnabled(true);
+                setTtsLoading(true);
+                import('./ttsService').then(({ preloadTTS }) => {
+                  preloadTTS().then((ok) => {
+                    setTtsLoading(false);
+                    if (!ok) setTtsEnabled(false);
+                    else if (game) {
+                      apiRequest(`/api/games/${game.id}/tts-mode`, { method: 'POST', body: JSON.stringify({ enabled: true }) }).catch(() => {});
+                    }
+                  });
+                });
+              } else {
+                setTtsEnabled(false);
+                stopAudio();
+                cleanupTts();
+                if (game) {
+                  apiRequest(`/api/games/${game.id}/tts-mode`, { method: 'POST', body: JSON.stringify({ enabled: false }) }).catch(() => {});
+                }
+              }
+            }}
+            title={ttsEnabled ? 'Disable TTS' : 'Enable TTS (requires TTS server)'}
+          >
+            {ttsLoading ? '⏳' : ttsEnabled ? '🔊' : '🔇'}
+          </button>
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
           <button className="new-game-btn" onClick={newGame}>New Game</button>
         </div>
@@ -641,6 +781,15 @@ export function App(): JSX.Element {
                     <div className={`bubble ${isHuman ? 'bubble-mine' : 'bubble-theirs'} bubble-team-${msgTeam}`}>
                       <span className="bubble-name">{msg.playerName}</span>
                       <span className="bubble-text" dangerouslySetInnerHTML={{ __html: parseMarkdown(msg.content) }} />
+                      {ttsEnabled && ttsCache.current.has(msg.id) ? (
+                        <button
+                          className={`tts-btn ${playingMsgId === msg.id ? 'playing' : ''}`}
+                          onClick={() => playingMsgId === msg.id ? stopAudio() : playAudio(ttsCache.current.get(msg.id)!, msg.id)}
+                          title={playingMsgId === msg.id ? 'Stop' : 'Play'}
+                        >
+                          {playingMsgId === msg.id ? '⏹' : '🔊'}
+                        </button>
+                      ) : null}
                     </div>
                   )}
                 </div>

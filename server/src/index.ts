@@ -12,6 +12,8 @@ import {
 } from './gameStore.js';
 import { runFullLlmTurn, runTeammateRound, autoSpymasterHint } from './deliberation.js';
 import { type TeamColor } from './types.js';
+import { initTTS, generateAudio, isTTSReady } from './ttsService.js';
+import { setTtsMode, ackTts } from './ttsGate.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3001);
@@ -134,6 +136,32 @@ app.post('/api/games/:gameId/teams/:team/llm-deliberate', (req, res) => {
   }
 });
 
+app.post('/api/games/:gameId/tts-mode', (req, res) => {
+  const enabled = !!req.body.enabled;
+  setTtsMode(req.params.gameId, enabled);
+  res.json({ ttsEnabled: enabled });
+});
+
+app.post('/api/games/:gameId/tts-ack', (req, res) => {
+  ackTts(req.params.gameId);
+  res.json({ status: 'ok' });
+});
+
+app.get('/api/tts/health', (_req, res) => {
+  res.json({ status: isTTSReady() ? 'ok' : 'loading' });
+});
+
+app.post('/api/tts', async (req, res) => {
+  const { text, voice } = req.body ?? {};
+  if (!text) return res.status(400).json({ error: 'text is required' });
+  if (!isTTSReady()) return res.status(503).json({ error: 'TTS model still loading' });
+  const wav = await generateAudio(text, voice || 'af_heart');
+  if (!wav) return res.status(500).json({ error: 'TTS generation failed' });
+  res.set('Content-Type', 'audio/wav');
+  res.send(wav);
+});
+
 app.listen(port, () => {
   console.log(`Clueless server running on http://localhost:${port}`);
+  initTTS();
 });
