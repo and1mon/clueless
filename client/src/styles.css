@@ -7,6 +7,8 @@
   --border: #d1d5db;
   --text: #1f2937;
   --muted: #6b7280;
+  --primary: #2563eb;
+  --primary-bg: #dbeafe;
   --red: #dc2626;
   --red-bg: #fecaca;
   --red-subtle: #fee2e2;
@@ -31,6 +33,8 @@
   --border: #30363d;
   --text: #e6edf3;
   --muted: #8b949e;
+  --primary: #60a5fa;
+  --primary-bg: #264f78;
   --red: #f87171;
   --red-bg: #6e302e;
   --red-subtle: #3d1f1f;
@@ -56,6 +60,8 @@
     --border: #30363d;
     --text: #e6edf3;
     --muted: #8b949e;
+    --primary: #60a5fa;
+    --primary-bg: #264f78;
     --red: #f87171;
     --red-bg: #6e302e;
     --red-subtle: #3d1f1f;
@@ -357,8 +363,15 @@ body {
   text-transform: uppercase;
 }
 
-.badge.red { background: var(--red-bg); color: #fca5a5; }
-.badge.blue { background: var(--blue-bg); color: #93c5fd; }
+.badge.red { 
+  background: var(--red-bg); 
+  color: var(--red);
+}
+
+.badge.blue { 
+  background: var(--blue-bg); 
+  color: var(--blue);
+}
 
 /* --- Board info panel (above grid) --- */
 .board-info {
@@ -839,16 +852,17 @@ button.reject { background: var(--red); color: #fff; }
   border-bottom-left-radius: 4px;
 }
 
-/* Subtle team tint on non-human bubbles */
-.bubble-team-red:not(.bubble-mine) {
-  border-left: 3px solid var(--red);
-}
-.bubble-team-blue:not(.bubble-mine) {
-  border-left: 3px solid var(--blue);
+/* Team alignment for rows */
+.bubble-row.team-blue:not(.system-row) { justify-content: flex-end; }
+.bubble-row.team-red:not(.system-row) { justify-content: flex-start; }
+
+/* Ensure inner bubble text stays left-aligned */
+.bubble {
+  text-align: left;
 }
 
 .bubble-name {
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
 }

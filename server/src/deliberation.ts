@@ -1,5 +1,6 @@
 import {
   createProposal,
+  forfeitTurn,
   getGame,
   getTeamLlmPlayers,
   postChatMessage,
@@ -69,9 +70,24 @@ async function runOnePlayer(
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       // Add rejected words to chat history so LLM knows what failed
-      const extraHistory = rejectedWords.length
+      let extraHistory = rejectedWords.length
         ? [...chatHistory, { name: 'System', content: `Your previous hints were rejected because they are words on the board: ${rejectedWords.join(', ')}. Pick a DIFFERENT word that is NOT on the board.` }]
         : chatHistory;
+
+      // If there's a pending proposal and multiple chat messages since it was created, add a reminder
+      if (pending.length > 0 && player.role === 'operative') {
+        const proposal = pending[0];
+        const proposalTime = new Date(proposal.createdAt).getTime();
+        const recentMessages = game.chatLog.filter(
+          (m) => m.team === team && new Date(m.createdAt).getTime() > proposalTime && !m.content.includes('voted')
+        );
+        if (recentMessages.length >= 3 && proposal.createdBy !== playerId) {
+          extraHistory = [...extraHistory, {
+            name: 'System',
+            content: `⚠️ REMINDER: There is a pending proposal waiting for your vote. You MUST vote before continuing discussion.`
+          }];
+        }
+      }
 
       const response = await client.getResponse({
         game,
@@ -193,7 +209,14 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
   try {
     setDeliberating(gameId, team, true);
     await sleep(1500);
-    await runOnePlayer(gameId, team, spymaster.id);
+    const success = await runOnePlayer(gameId, team, spymaster.id);
+    
+    // If spymaster failed to produce a valid hint after all retries, forfeit the turn
+    if (!success) {
+      console.error(`Spymaster ${spymaster.name} failed to produce valid hint, forfeiting turn`);
+      forfeitTurn(gameId, team, `${spymaster.name} could not provide a valid hint. Turn forfeited.`);
+      return;
+    }
   } finally {
     setDeliberating(gameId, team, false);
     releaseLock(gameId, team);

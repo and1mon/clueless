@@ -416,6 +416,13 @@ export function setLlmError(gameId: string, message: string): void {
   game.llmError = message;
 }
 
+export function forfeitTurn(gameId: string, team: TeamColor, reason: string): GameState {
+  const game = getGame(gameId);
+  addSystemMessage(game, team, `⚠️ ${reason}`);
+  switchTurn(game);
+  return game;
+}
+
 export function hasHumanPlayer(game: GameState, team: TeamColor): boolean {
   return game.teams[team].players.some((id) => game.players[id].type === 'human');
 }

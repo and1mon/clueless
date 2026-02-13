@@ -193,10 +193,22 @@ export class LlmClient {
     ].join('\n');
 
     // Build chat history — mark own messages as assistant role
-    const chatMessages = input.chatHistory.slice(-30).map((m) => ({
+    const rawChatMessages = input.chatHistory.slice(-30).map((m) => ({
       role: (m.name === player.name ? 'assistant' : 'user') as 'assistant' | 'user',
       content: m.name === player.name ? m.content : `${m.name}: ${m.content}`,
     }));
+
+    // Ensure proper alternation: merge consecutive messages with the same role
+    const chatMessages: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+    for (const msg of rawChatMessages) {
+      const last = chatMessages[chatMessages.length - 1];
+      if (last && last.role === msg.role) {
+        // Same role as previous - merge them
+        last.content += `\n${msg.content}`;
+      } else {
+        chatMessages.push(msg);
+      }
+    }
 
     const stateContext = [
       `[GAME STATE] Team: ${team} | Your role: ${player.role} | Turn: ${game.turn.activeTeam}/${game.turn.phase}`,
@@ -205,6 +217,14 @@ export class LlmClient {
       `Pending proposals:\n${proposalLines}`,
       'Now it\'s your turn to respond. Return JSON with "message" and "action".',
     ].join('\n');
+
+    // We need to add stateContext, but ensure alternation with the last chat message
+    // If the last message is 'user', we need to add an assistant acknowledgment first
+    if (chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user') {
+      chatMessages.push({ role: 'assistant', content: 'Understood.' });
+    }
+    // Now we can safely add the final user message with state context
+    chatMessages.push({ role: 'user', content: stateContext });
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.apiKey) headers.Authorization = `Bearer ${this.config.apiKey}`;
@@ -222,7 +242,6 @@ export class LlmClient {
           messages: [
             { role: 'system', content: system },
             ...chatMessages,
-            { role: 'user', content: stateContext },
           ],
         }),
       });

@@ -590,7 +590,7 @@ export function App(): JSX.Element {
 
               if (isVoteAccept || isVoteReject) {
                 return (
-                  <div key={msg.id} className="bubble-row system-row">
+                  <div key={msg.id} className={`bubble-row system-row ${msgTeam ? `team-${msgTeam}` : ''}`}>
                     <div className={`vote-msg ${isVoteAccept ? 'vote-accept' : 'vote-reject'}`}>
                       <span className="vote-icon">{isVoteAccept ? '✓' : '✗'}</span>
                       <span>{msg.content}</span>
@@ -601,7 +601,7 @@ export function App(): JSX.Element {
 
               if (isProposal) {
                 return (
-                  <div key={msg.id} className="bubble-row system-row">
+                  <div key={msg.id} className={`bubble-row system-row ${msgTeam ? `team-${msgTeam}` : ''}`}>
                     <div className={`proposal-msg team-${msgTeam}`}>
                       <span className="proposal-icon">📋</span>
                       <span>{msg.content}</span>
@@ -614,7 +614,7 @@ export function App(): JSX.Element {
                 return (
                   <div key={msg.id}>
                     <hr className="turn-divider" />
-                    <div className="bubble-row system-row">
+                    <div className={`bubble-row system-row ${msgTeam ? `team-${msgTeam}` : ''}`}>
                       <div className={`action-msg team-${msgTeam}`}>{msg.content}</div>
                     </div>
                   </div>
@@ -622,7 +622,7 @@ export function App(): JSX.Element {
               }
 
               return (
-                <div key={msg.id} className={`bubble-row ${isSystem ? 'system-row' : isHuman ? 'mine' : 'theirs'}`}>
+                <div key={msg.id} className={`bubble-row ${isSystem ? 'system-row' : isHuman ? 'mine' : 'theirs'} ${msgTeam ? `team-${msgTeam}` : ''}`}>
                   {isSystem ? (
                     <div className={`${isAction ? 'action-msg' : 'system-msg'} team-${msgTeam}`}>{msg.content}</div>
                   ) : (
@@ -635,7 +635,7 @@ export function App(): JSX.Element {
               );
             })}
             {isThinking ? (
-              <div className="bubble-row theirs">
+              <div className={`bubble-row theirs team-${turn.activeTeam}`}>
                 <div className="bubble bubble-theirs thinking-bubble">
                   <span className="dots">●●●</span>
                 </div>
