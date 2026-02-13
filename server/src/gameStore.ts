@@ -30,11 +30,11 @@ const DEFAULT_LLM = {
 };
 
 const PERSONALITIES = [
-  'You are cautious and analytical. You think through risks carefully before committing.',
-  'You are bold and decisive. You trust your instincts and push the team to act.',
-  'You are supportive and collaborative. You build on others\' ideas and look for consensus.',
-  'You are skeptical and detail-oriented. You challenge assumptions and spot flaws.',
-  'You are creative and lateral-thinking. You find unexpected connections between words.',
+  'You overthink everything and second-guess yourself constantly. Every choice stresses you out and you keep imagining what could go wrong.',
+  'You\'re impatient and get fired up easily. You want to guess NOW and hate when people deliberate forever. Not rude, just intense.',
+  'You\'re super relaxed and laid-back. Nothing phases you. You go with the flow and keep things mellow.',
+  'You love talking shit — to the other team AND your own teammates (lovingly). Competitive banter is your love language.',
+  'You\'re endlessly positive and supportive. You hype up every teammate\'s idea. Even bad guesses get encouragement from you.',
 ];
 
 function nowIso(): string {
@@ -59,7 +59,7 @@ function operativeCount(game: GameState, team: TeamColor): number {
 }
 
 function requiredVotes(count: number): number {
-  return Math.max(1, Math.ceil(count / 2));
+  return Math.ceil(count / 2);
 }
 
 function createPlayers(input: CreateGameInput): {
@@ -227,6 +227,7 @@ function addMessage(
     content,
     createdAt: nowIso(),
     proposalId,
+    phase: game.turn.phase,
   });
 }
 
@@ -283,13 +284,23 @@ function countRemaining(game: GameState, owner: TeamColor): number {
 }
 
 function switchTurn(game: GameState): void {
-  game.turn.activeTeam = otherTeam(game.turn.activeTeam);
-  game.turn.phase = 'hint';
+  const previousTeam = game.turn.activeTeam;
+  game.turn.activeTeam = otherTeam(previousTeam);
+  game.turn.phase = 'banter';
+  game.turn.previousTeam = previousTeam;
   game.turn.hintWord = undefined;
   game.turn.hintCount = undefined;
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = 0;
   addSystemMessage(game, game.turn.activeTeam, `It's now ${game.turn.activeTeam}'s turn.`);
+}
+
+export function endBanter(gameId: string): GameState {
+  const game = getGame(gameId);
+  if (game.turn.phase !== 'banter') throw new Error('Not in banter phase.');
+  game.turn.phase = 'hint';
+  game.turn.previousTeam = undefined;
+  return game;
 }
 
 function finishGame(game: GameState, winner: TeamColor, reason: string): void {
@@ -303,8 +314,9 @@ function resolveGuess(game: GameState, team: TeamColor, guessWord: string): void
   if (!card) throw new Error(`"${guessWord}" is not on the board.`);
   if (card.revealed) throw new Error(`"${guessWord}" was already revealed.`);
 
-  card.revealed = true;
+  // Add the reveal message BEFORE flipping the card so chat log appears before board updates
   addSystemMessage(game, team, `Revealed "${card.word}" → ${card.owner}`);
+  card.revealed = true;
 
   if (card.owner === 'assassin') {
     finishGame(game, otherTeam(team), `${team} hit the assassin!`);
@@ -343,8 +355,18 @@ export function createProposal(
   if (game.turn.phase !== 'guess') throw new Error('Wait for the spymaster hint first.');
 
   // Only one pending proposal at a time
-  const hasPending = game.proposals[team].some((p) => p.status === 'pending');
-  if (hasPending) throw new Error('There is already a pending proposal. Vote on it first.');
+  const pendingProposal = game.proposals[team].find((p) => p.status === 'pending');
+  if (pendingProposal) {
+    // If proposing the same word as pending, convert to accept vote
+    if (kind === 'guess' && pendingProposal.kind === 'guess' &&
+        payload.word?.trim().toLowerCase() === pendingProposal.payload.word?.toLowerCase() &&
+        pendingProposal.createdBy !== playerId) {
+      const player = game.players[playerId];
+      addMessage(game, team, playerId, `${player.name} also wants to guess "${payload.word}"`, 'system', pendingProposal.id);
+      return voteOnProposal(gameId, team, playerId, pendingProposal.id, 'accept');
+    }
+    throw new Error('There is already a pending proposal. Vote on it first.');
+  }
 
   if (kind === 'guess') {
     if (!payload.word?.trim()) throw new Error('Guess must include a word.');
@@ -371,6 +393,22 @@ export function createProposal(
   const proposer = game.players[playerId];
   const label = kind === 'guess' ? `proposes guessing "${payload.word}"` : 'proposes ending the turn';
   addMessage(game, team, playerId, `${proposer.name} ${label}`, 'proposal', proposal.id);
+
+  // Auto-pass for solo operatives (threshold = 0)
+  const voterCount = operativeCount(game, team) - 1;
+  const threshold = requiredVotes(voterCount);
+  if (threshold === 0) {
+    proposal.status = 'accepted';
+    proposal.resolvedAt = nowIso();
+    addSystemMessage(game, team, 'Solo operative — proposal auto-accepted.');
+    if (proposal.kind === 'guess') {
+      resolveGuess(game, team, proposal.payload.word ?? '');
+    } else {
+      addSystemMessage(game, team, 'Team decided to end their turn.');
+      switchTurn(game);
+    }
+  }
+
   return game;
 }
 
@@ -395,7 +433,7 @@ export function voteOnProposal(
   // Count votes excluding the proposer
   const votes = Object.values(proposal.votes);
   const voterCount = operativeCount(game, team) - 1; // exclude proposer
-  const threshold = requiredVotes(Math.max(1, voterCount));
+  const threshold = requiredVotes(voterCount);
   const accepts = votes.filter((v) => v === 'accept').length;
   const rejects = votes.filter((v) => v === 'reject').length;
 

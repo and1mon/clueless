@@ -2,7 +2,7 @@ export type TeamColor = 'red' | 'blue';
 export type CardOwner = TeamColor | 'neutral' | 'assassin';
 export type PlayerType = 'human' | 'llm';
 export type PlayerRole = 'spymaster' | 'operative';
-export type TurnPhase = 'hint' | 'guess';
+export type TurnPhase = 'hint' | 'guess' | 'banter';
 export type ProposalKind = 'guess' | 'end_turn';
 
 export interface Card {
@@ -34,6 +34,7 @@ export interface TurnState {
   hintCount?: number;
   guessesMade: number;
   maxGuesses: number;
+  previousTeam?: TeamColor;
 }
 
 export interface Message {
@@ -45,6 +46,7 @@ export interface Message {
   content: string;
   createdAt: string;
   proposalId?: string;
+  phase?: TurnPhase;
 }
 
 export interface Proposal {
@@ -79,6 +81,7 @@ export interface GameState {
   llmConfig: LlmConfig;
   deliberating: Record<TeamColor, boolean>;
   llmError?: string;
+  gameOverBanter?: boolean;
 }
 
 export interface LlmPlayerInput {

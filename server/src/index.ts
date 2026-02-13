@@ -10,7 +10,7 @@ import {
   submitHint,
   voteOnProposal,
 } from './gameStore.js';
-import { runFullLlmTurn, runTeammateRound, autoSpymasterHint } from './deliberation.js';
+import { runFullLlmTurn, runTeammateRound, autoSpymasterHint, runBanterRound, runEndGameBanter, fireAndForget } from './deliberation.js';
 import { type TeamColor } from './types.js';
 import { initTTS, generateAudio, isTTSReady } from './ttsService.js';
 import { setTtsMode, ackTts } from './ttsGate.js';
@@ -26,28 +26,50 @@ function parseTeam(value: string): TeamColor {
   return value;
 }
 
+// C1+C2: Simplified autoplay — handles banter once, then loops all-LLM turns
 async function autoplayIfNeeded(gameId: string): Promise<void> {
-  for (let i = 0; i < 3; i += 1) {
-    const game = getGame(gameId);
-    if (game.winner || hasHumanPlayer(game, game.turn.activeTeam)) break;
-    await runFullLlmTurn(gameId, game.turn.activeTeam, 20);
-  }
-  // After all-LLM turns resolve, auto-trigger spymaster hint if needed
+  // Handle any pending banter first
   const game = getGame(gameId);
-  if (!game.winner) {
-    await autoSpymasterHint(gameId, game.turn.activeTeam);
+  if (!game.winner && game.turn.phase === 'banter') {
+    await runBanterRound(gameId);
+  }
+
+  // Run up to 3 consecutive all-LLM turns (turn may switch to the other all-LLM team)
+  for (let i = 0; i < 3; i += 1) {
+    const current = getGame(gameId);
+    if (current.winner || hasHumanPlayer(current, current.turn.activeTeam)) break;
+    await runFullLlmTurn(gameId, current.turn.activeTeam, 20);
+  }
+
+  // Auto-trigger spymaster hint if a human team is now active
+  const updated = getGame(gameId);
+  if (!updated.winner) {
+    await autoSpymasterHint(gameId, updated.turn.activeTeam);
+  }
+
+  // End-game banter if game just ended
+  if (getGame(gameId).winner) {
+    await runEndGameBanter(gameId);
   }
 }
 
+// C3: Use fireAndForget for background LLM actions
 function afterHumanAction(gameId: string, team: TeamColor): void {
-  (async () => {
-    try {
-      await runTeammateRound(gameId, team);
-      await autoplayIfNeeded(gameId);
-    } catch (err) {
-      console.error('Background LLM error:', err);
+  fireAndForget(async () => {
+    const game = getGame(gameId);
+    if (game.winner) {
+      await runEndGameBanter(gameId);
+      return;
     }
-  })();
+    if (game.turn.phase === 'banter') {
+      await runBanterRound(gameId);
+    }
+    const updated = getGame(gameId);
+    if (!updated.winner && updated.turn.activeTeam === team) {
+      await runTeammateRound(gameId, team);
+    }
+    await autoplayIfNeeded(gameId);
+  }, 'afterHumanAction');
 }
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -56,16 +78,13 @@ app.post('/api/games', (req, res) => {
   try {
     const game = createGame(req.body ?? {});
     res.status(201).json(serializeGame(game));
-    // Kick off LLM activity in the background
-    (async () => {
-      try {
-        if (!hasHumanPlayer(game, game.turn.activeTeam)) {
-          await autoplayIfNeeded(game.id);
-        } else {
-          await autoSpymasterHint(game.id, game.turn.activeTeam);
-        }
-      } catch (e) { console.error(e); }
-    })();
+    fireAndForget(async () => {
+      if (!hasHumanPlayer(game, game.turn.activeTeam)) {
+        await autoplayIfNeeded(game.id);
+      } else {
+        await autoSpymasterHint(game.id, game.turn.activeTeam);
+      }
+    }, 'gameCreate');
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }

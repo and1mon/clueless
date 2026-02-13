@@ -26,26 +26,26 @@ function defaultLlmPlayers(team: TeamColor, count: number): LlmPlayerSetup[] {
 }
 
 const PERSONALITY_POOL: { name: string; description: string }[] = [
-  { name: 'The Analyst', description: 'You are cautious and analytical. You think through risks carefully before committing to a guess.' },
-  { name: 'The Commander', description: 'You are bold and decisive. You trust your instincts and push the team to act quickly.' },
-  { name: 'The Cheerleader', description: 'You are supportive and collaborative. You build on others\' ideas and look for consensus.' },
-  { name: 'The Skeptic', description: 'You are skeptical and detail-oriented. You challenge assumptions and spot flaws in reasoning.' },
-  { name: 'The Wildcard', description: 'You are creative and lateral-thinking. You find unexpected connections between words.' },
-  { name: 'The Strategist', description: 'You are competitive and strategic. You always consider what the enemy team might do next.' },
-  { name: 'The Professor', description: 'You are patient and methodical. You prefer to eliminate wrong answers before guessing.' },
-  { name: 'The Hype Man', description: 'You are enthusiastic and optimistic. You encourage the team and celebrate good guesses.' },
-  { name: 'The Observer', description: 'You are quiet and observant. You speak only when you have something important to add.' },
-  { name: 'The Captain', description: 'You are a natural leader. You take charge of discussions and keep the team focused.' },
-  { name: 'The Contrarian', description: 'You are a devil\'s advocate. You argue the opposite position to stress-test ideas.' },
-  { name: 'The Realist', description: 'You are pragmatic and results-oriented. You prefer safe single-word guesses over risky multi-word plays.' },
-  { name: 'The Gambler', description: 'You are a risk-taker. You love going for ambitious multi-word connections.' },
-  { name: 'The Diplomat', description: 'You are empathetic and diplomatic. You mediate disagreements and find middle ground.' },
-  { name: 'The Encyclopedia', description: 'You are nerdy and encyclopedic. You draw on obscure knowledge to find word connections.' },
-  { name: 'The Joker', description: 'You are funny and lighthearted. You keep morale up with humor while still playing seriously.' },
-  { name: 'The Sweater', description: 'You are intense and focused. You treat every guess like it could win or lose the game.' },
-  { name: 'The Thinker', description: 'You are philosophical. You overthink word meanings and consider multiple interpretations.' },
-  { name: 'The Speedster', description: 'You are impatient and action-oriented. You hate long discussions and want to guess already.' },
-  { name: 'The Poet', description: 'You are a wordsmith. You love puns, etymology, and clever word associations.' },
+  { name: 'The Overthinker', description: 'You overthink everything and second-guess yourself constantly. Every choice stresses you out and you keep imagining what could go wrong.' },
+  { name: 'The Hothead', description: 'You\'re impatient and get fired up easily. You want to guess NOW and hate when people deliberate forever. Not rude, just intense.' },
+  { name: 'The Schemer', description: 'You\'re always thinking three moves ahead. You care about what the other team is doing almost as much as your own plays. Sneaky energy.' },
+  { name: 'The Hype Beast', description: 'You get WAY too excited about everything. Every good guess makes you explode with joy and every bad one devastates you. Pure emotional energy.' },
+  { name: 'The Chill One', description: 'You\'re super relaxed and laid-back. Nothing phases you. You go with the flow and keep things mellow. Easy agreement, low stress.' },
+  { name: 'The Trash Talker', description: 'You love talking shit — to the other team AND your own teammates (lovingly). Competitive banter is your love language.' },
+  { name: 'The Nerd', description: 'You get excited about obscure word connections and etymology. Kind of a know-it-all but in a charming way. You drop random facts.' },
+  { name: 'The Skeptic', description: 'You don\'t trust anyone\'s first instinct, including your own. You poke holes in every suggestion and question everything.' },
+  { name: 'The Cheerleader', description: 'You\'re endlessly positive and supportive. You hype up every teammate\'s idea. Even bad guesses get encouragement from you.' },
+  { name: 'The Boss', description: 'You naturally take charge of discussions. You like to organize the team and keep things on track. Can come across as a bit bossy but mean well.' },
+  { name: 'The Comedian', description: 'You can\'t help making jokes and puns about everything. You take the game seriously but you take being funny MORE seriously.' },
+  { name: 'The Worry Wart', description: 'You\'re always thinking about worst-case scenarios. You\'re cautious to a fault and imagine everything that could go wrong.' },
+  { name: 'The Gambler', description: 'You love risky plays and big swings. You believe in bold moves and get bored with safe, obvious guesses.' },
+  { name: 'The Peacemaker', description: 'You hate conflict and always try to find middle ground. When teammates disagree you try to hear everyone out and find compromise.' },
+  { name: 'The Rival', description: 'You are OBSESSED with beating the other team. Everything is about the competition. You take their successes personally and celebrate their failures.' },
+  { name: 'The Contrarian', description: 'If everyone agrees, you suddenly get suspicious. You play devil\'s advocate on purpose and argue the opposite just to test ideas.' },
+  { name: 'The Vibes Player', description: 'You go purely on gut feeling and vibes. Your reasoning is often just intuition which drives analytical teammates crazy.' },
+  { name: 'The Professor', description: 'You approach the game methodically and like to reason through things step by step. A bit dry but usually right. You eliminate wrong answers before guessing.' },
+  { name: 'The Drama Queen', description: 'Everything is the end of the world or the best thing ever. You have BIG reactions to everything. There is no middle ground in your emotional range.' },
+  { name: 'The Silent Type', description: 'You don\'t talk much, but when you do, it\'s usually something sharp or funny. You observe more than you speak. Quality over quantity.' },
 ];
 
 // Configure marked for inline rendering
@@ -69,18 +69,21 @@ export function App(): JSX.Element {
   const [hintCount, setHintCount] = useState('2');
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const gameRef = useRef<GameState | null>(null);
+  gameRef.current = game;
+  const [displayVersion, setDisplayVersion] = useState(0);
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const [setup, setSetup] = useState({
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
-    humanRole: 'operative' as PlayerRole | 'spectator',
-    redCount: 2,
+    humanRole: 'spectator' as PlayerRole | 'spectator',
+    redCount: 3,
     blueCount: 3,
     baseUrl: '',
     model: '',
     apiKey: '',
-    redPlayers: defaultLlmPlayers('red', 2),
+    redPlayers: defaultLlmPlayers('red', 3),
     bluePlayers: defaultLlmPlayers('blue', 3),
   });
 
@@ -118,10 +121,10 @@ export function App(): JSX.Element {
     return () => clearInterval(timer);
   }, [game?.id]);
 
-  // Auto-scroll chat
+  // Auto-scroll chat (also triggers when display-gated messages are revealed)
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [game?.chatLog]);
+  }, [game?.chatLog, displayVersion]);
 
   // Stale detection state (must be before any early returns)
   const [staleRetries, setStaleRetries] = useState(0);
@@ -130,19 +133,50 @@ export function App(): JSX.Element {
   const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
 
-  // TTS state — browser-side generation via kokoro-js (Web Worker)
+  // TTS state
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [ttsLoading, setTtsLoading] = useState(false);
-  const autoPlay = true;
   const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
-  const [ttsQueueVersion, setTtsQueueVersion] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsStartIdx = useRef(-1);
   const ttsCache = useRef<Map<string, string>>(new Map());
   const ttsGenerating = useRef<Set<string>>(new Set());
-  const ttsAutoPlayQueue = useRef<string[]>([]);
+  const ttsFailed = useRef<Set<string>>(new Set());
+  const displayUpTo = useRef(0);
+  // A3: State counter to re-trigger tryAdvanceDisplay when TTS generation completes
+  const [ttsReady, setTtsReady] = useState(0);
+  // A4: Track concurrent generation count to limit parallel requests
+  const ttsActiveGenerations = useRef(0);
+  const TTS_MAX_CONCURRENT = 2;
+  // A4: Queue of pending TTS generation requests
+  const ttsQueue = useRef<Array<{ msgId: string; content: string; voice: string }>>([]);
 
-  const playAudio = useCallback((blobUrl: string, msgId: string) => {
+  // A4: Process TTS generation queue — starts next item if under concurrency limit
+  const processTtsQueue = useCallback(() => {
+    while (ttsActiveGenerations.current < TTS_MAX_CONCURRENT && ttsQueue.current.length > 0) {
+      const item = ttsQueue.current.shift()!;
+      if (ttsCache.current.has(item.msgId) || ttsFailed.current.has(item.msgId)) continue;
+      ttsActiveGenerations.current++;
+      import('./ttsService').then(({ generateTTS }) => {
+        generateTTS(item.content, item.voice).then((blobUrl) => {
+          ttsActiveGenerations.current--;
+          ttsGenerating.current.delete(item.msgId);
+          if (blobUrl) {
+            ttsCache.current.set(item.msgId, blobUrl);
+          } else {
+            ttsFailed.current.add(item.msgId);
+          }
+          // A3: Bump ttsReady to re-trigger the advance effect
+          setTtsReady((v) => v + 1);
+          // A4: Process next in queue
+          processTtsQueue();
+        });
+      });
+    }
+  }, []);
+
+  // A1: playAudio now sends tts-ack AFTER playback finishes (not after generation)
+  const playAudio = useCallback((blobUrl: string, msgId: string, onEnd?: () => void) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -150,15 +184,24 @@ export function App(): JSX.Element {
     const audio = new Audio(blobUrl);
     audioRef.current = audio;
     setPlayingMsgId(msgId);
-    audio.onended = () => {
+
+    const handleEnd = () => {
       setPlayingMsgId(null);
       audioRef.current = null;
+      // A1: Ack the server after the user actually heard the message
+      const g = gameRef.current;
+      if (g) {
+        apiRequest(`/api/games/${g.id}/tts-ack`, { method: 'POST', body: '{}' }).catch(() => {});
+      }
+      onEnd?.();
     };
-    audio.onerror = () => {
+
+    audio.onended = handleEnd;
+    audio.onerror = handleEnd;
+    audio.play().catch(() => {
       setPlayingMsgId(null);
-      audioRef.current = null;
-    };
-    audio.play().catch(() => setPlayingMsgId(null));
+      handleEnd();
+    });
   }, []);
 
   const stopAudio = useCallback(() => {
@@ -175,7 +218,9 @@ export function App(): JSX.Element {
     }
     ttsCache.current.clear();
     ttsGenerating.current.clear();
-    ttsAutoPlayQueue.current = [];
+    ttsFailed.current.clear();
+    ttsQueue.current = [];
+    ttsActiveGenerations.current = 0;
     ttsStartIdx.current = -1;
     import('./ttsService').then(({ disposeTTS }) => disposeTTS());
   }, []);
@@ -185,62 +230,85 @@ export function App(): JSX.Element {
     return () => cleanupTts();
   }, [cleanupTts]);
 
-  // Generate TTS for new chat messages (only those arriving after TTS was enabled)
+  // tryAdvanceDisplay: reveal messages one at a time, gated by audio playback.
+  const tryAdvanceDisplay = useCallback(() => {
+    const g = gameRef.current;
+    if (!g || !ttsEnabled) return;
+    if (audioRef.current) return; // audio still playing
+
+    const log = g.chatLog;
+
+    while (displayUpTo.current < log.length) {
+      const msg = log[displayUpTo.current];
+      if (msg.kind !== 'chat' || msg.content === '...') {
+        displayUpTo.current++;
+        setDisplayVersion((v) => v + 1);
+        continue;
+      }
+
+      const blobUrl = ttsCache.current.get(msg.id);
+      const failed = ttsFailed.current.has(msg.id);
+
+      if (blobUrl) {
+        displayUpTo.current++;
+        setDisplayVersion((v) => v + 1);
+        playAudio(blobUrl, msg.id, () => {
+          tryAdvanceDisplay();
+        });
+        return;
+      } else if (failed) {
+        displayUpTo.current++;
+        setDisplayVersion((v) => v + 1);
+        // A1: Ack for failed TTS too so server doesn't stall
+        const gg = gameRef.current;
+        if (gg) {
+          apiRequest(`/api/games/${gg.id}/tts-ack`, { method: 'POST', body: '{}' }).catch(() => {});
+        }
+        continue;
+      } else {
+        // Audio not ready — A3: will be re-triggered by ttsReady state change
+        break;
+      }
+    }
+  }, [ttsEnabled, playAudio]);
+
+  // A3: Re-trigger tryAdvanceDisplay when TTS generation completes
+  useEffect(() => {
+    if (ttsReady > 0) tryAdvanceDisplay();
+  }, [ttsReady, tryAdvanceDisplay]);
+
+  // Generate TTS for new chat messages with A4: concurrency-limited queue
   useEffect(() => {
     if (!game || !ttsEnabled || ttsLoading) return;
     const log = game.chatLog;
     if (ttsStartIdx.current < 0) {
       ttsStartIdx.current = log.length;
+      displayUpTo.current = log.length;
+      setDisplayVersion((v) => v + 1);
       return;
     }
-    // Process one message at a time; advance index past skipped/dispatched messages
     for (let i = ttsStartIdx.current; i < log.length; i++) {
       const msg = log[i];
       if (msg.kind !== 'chat' || msg.content === '...') {
         ttsStartIdx.current = i + 1;
         continue;
       }
-      if (ttsCache.current.has(msg.id) || ttsGenerating.current.has(msg.id)) {
+      if (ttsCache.current.has(msg.id) || ttsGenerating.current.has(msg.id) || ttsFailed.current.has(msg.id)) {
         ttsStartIdx.current = i + 1;
         continue;
       }
       const player = game.players[msg.playerId];
       const voice = player?.voice || 'af_heart';
       ttsGenerating.current.add(msg.id);
-      import('./ttsService').then(({ generateTTS }) => {
-        generateTTS(msg.content, voice).then((blobUrl) => {
-          ttsGenerating.current.delete(msg.id);
-          if (blobUrl) {
-            ttsCache.current.set(msg.id, blobUrl);
-            if (autoPlay) {
-              ttsAutoPlayQueue.current.push(msg.id);
-              setTtsQueueVersion((v) => v + 1);
-            }
-          }
-          // Signal server that TTS is done so LLM deliberation can continue
-          if (game) {
-            apiRequest(`/api/games/${game.id}/tts-ack`, { method: 'POST', body: '{}' }).catch(() => {});
-          }
-        });
-      });
+      // A4: Enqueue instead of firing all in parallel
+      ttsQueue.current.push({ msgId: msg.id, content: msg.content, voice });
       ttsStartIdx.current = i + 1;
-      break; // Only start one generation at a time
     }
-  }, [game?.chatLog.length, ttsEnabled, ttsLoading, autoPlay]);
-
-  // Auto-play queued TTS messages
-  useEffect(() => {
-    if (!ttsEnabled || !autoPlay || audioRef.current) return;
-    const queue = ttsAutoPlayQueue.current;
-    while (queue.length > 0) {
-      const msgId = queue.shift()!;
-      const blobUrl = ttsCache.current.get(msgId);
-      if (blobUrl) {
-        playAudio(blobUrl, msgId);
-        return;
-      }
-    }
-  }, [ttsEnabled, autoPlay, playAudio, playingMsgId, ttsQueueVersion]);
+    // A4: Kick the queue processor
+    processTtsQueue();
+    // Also try to advance in case new system messages appeared
+    tryAdvanceDisplay();
+  }, [game?.chatLog.length, ttsEnabled, ttsLoading, tryAdvanceDisplay, processTtsQueue]);
 
   // Detect LLM config errors and go back to setup
   useEffect(() => {
@@ -252,6 +320,26 @@ export function App(): JSX.Element {
 
   // Stale detection: auto-nudge LLM if no new messages after 60s
   const isThinking = game ? (game.deliberating.red || game.deliberating.blue) : false;
+
+  // A5: Show thinking bubble when server is deliberating OR when TTS has buffered unrevealed messages
+  const hasTtsBuffer = ttsEnabled && game ? displayUpTo.current < game.chatLog.length : false;
+  const showThinking = isThinking || hasTtsBuffer;
+
+  // When TTS is enabled, show thinking bubble for the team of the next unrevealed message
+  const thinkingTeam = useMemo(() => {
+    if (!game) return 'red';
+
+    if (ttsEnabled && displayUpTo.current < game.chatLog.length) {
+      for (let i = displayUpTo.current; i < game.chatLog.length; i++) {
+        const msg = game.chatLog[i];
+        if (msg.kind === 'chat' && msg.content !== '...') {
+          return msg.team;
+        }
+      }
+    }
+
+    return game.deliberating.red ? 'red' : game.deliberating.blue ? 'blue' : game.turn.activeTeam;
+  }, [game, ttsEnabled, displayVersion]);
   useEffect(() => {
     if (!game || game.winner) return;
     const msgCount = game.chatLog.length;
@@ -584,6 +672,9 @@ export function App(): JSX.Element {
                     setTtsLoading(false);
                     if (!ok) setTtsEnabled(false);
                     else if (game) {
+                      // Everything already shown stays visible; future messages will be gated
+                      displayUpTo.current = game.chatLog.length;
+                      setDisplayVersion((v) => v + 1);
                       apiRequest(`/api/games/${game.id}/tts-mode`, { method: 'POST', body: JSON.stringify({ enabled: true }) }).catch(() => {});
                     }
                   });
@@ -591,10 +682,15 @@ export function App(): JSX.Element {
               } else {
                 setTtsEnabled(false);
                 stopAudio();
-                cleanupTts();
+                // Flush all buffered messages to visible
                 if (game) {
+                  displayUpTo.current = game.chatLog.length;
+                  setDisplayVersion((v) => v + 1);
+                  // Send ack to unblock any stuck server waiter
+                  apiRequest(`/api/games/${game.id}/tts-ack`, { method: 'POST', body: '{}' }).catch(() => {});
                   apiRequest(`/api/games/${game.id}/tts-mode`, { method: 'POST', body: JSON.stringify({ enabled: false }) }).catch(() => {});
                 }
+                cleanupTts();
               }
             }}
             title={ttsEnabled ? 'Disable TTS' : 'Enable TTS (requires TTS server)'}
@@ -619,6 +715,11 @@ export function App(): JSX.Element {
             </div>
             {game.winner ? (
               <div className="game-status winner-banner">🏆 {game.winner} wins!</div>
+            ) : turn.phase === 'banter' ? (
+              <div className="game-status">
+                <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
+                <span className="phase">Trash talk...</span>
+              </div>
             ) : turn.phase === 'guess' && turn.hintWord ? (
               <div className="game-status">
                 <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
@@ -722,7 +823,7 @@ export function App(): JSX.Element {
 
           {/* Unified chat log */}
           <div className="chat-log">
-            {game.chatLog.map((msg) => {
+            {game.chatLog.slice(0, ttsEnabled ? displayUpTo.current : game.chatLog.length).map((msg) => {
               const isHuman = msg.playerId === humanPlayer?.id;
               const isSystem = msg.kind === 'system' || msg.kind === 'proposal';
               const msgTeam = msg.team;
@@ -795,8 +896,8 @@ export function App(): JSX.Element {
                 </div>
               );
             })}
-            {isThinking ? (
-              <div className={`bubble-row theirs team-${turn.activeTeam}`}>
+            {showThinking ? (
+              <div className={`bubble-row theirs team-${thinkingTeam}`}>
                 <div className="bubble bubble-theirs thinking-bubble">
                   <span className="dots">●●●</span>
                 </div>

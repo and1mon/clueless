@@ -28,6 +28,7 @@ export interface Message {
   content: string;
   createdAt: string;
   proposalId?: string;
+  phase?: 'hint' | 'guess' | 'banter';
 }
 
 export interface Proposal {
@@ -51,15 +52,17 @@ export interface GameState {
   proposals: Record<TeamColor, Proposal[]>;
   turn: {
     activeTeam: TeamColor;
-    phase: 'hint' | 'guess';
+    phase: 'hint' | 'guess' | 'banter';
     hintWord?: string;
     hintCount?: number;
     guessesMade: number;
     maxGuesses: number;
+    previousTeam?: TeamColor;
   };
   winner?: TeamColor;
   loserReason?: string;
   deliberating: Record<TeamColor, boolean>;
   llmConfig: { baseUrl: string; model: string };
   llmError?: string;
+  gameOverBanter?: boolean;
 }
