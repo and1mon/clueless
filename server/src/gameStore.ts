@@ -337,6 +337,12 @@ export function createProposal(
 
   if (kind === 'guess') {
     if (!payload.word?.trim()) throw new Error('Guess must include a word.');
+    
+    // Validate the word exists on the board and is not already revealed
+    const word = payload.word.trim().toLowerCase();
+    const card = game.cards.find((c) => c.word.toLowerCase() === word);
+    if (!card) throw new Error(`"${payload.word}" is not on the board.`);
+    if (card.revealed) throw new Error(`"${payload.word}" has already been revealed.`);
   }
 
   const proposal: Proposal = {
@@ -373,7 +379,7 @@ export function voteOnProposal(
   if (proposal.createdBy === playerId) throw new Error('You cannot vote on your own proposal.');
 
   proposal.votes[playerId] = decision;
-  addMessage(game, team, playerId, `${game.players[playerId].name} voted ${decision}`, 'chat', proposal.id);
+  addMessage(game, team, playerId, `${game.players[playerId].name} voted ${decision}`, 'system', proposal.id);
 
   // Count votes excluding the proposer
   const votes = Object.values(proposal.votes);
@@ -403,6 +409,11 @@ export function voteOnProposal(
 export function setDeliberating(gameId: string, team: TeamColor, value: boolean): void {
   const game = getGame(gameId);
   game.deliberating[team] = value;
+}
+
+export function setLlmError(gameId: string, message: string): void {
+  const game = getGame(gameId);
+  game.llmError = message;
 }
 
 export function hasHumanPlayer(game: GameState, team: TeamColor): boolean {

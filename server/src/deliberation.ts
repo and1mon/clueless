@@ -4,6 +4,7 @@ import {
   getTeamLlmPlayers,
   postChatMessage,
   setDeliberating,
+  setLlmError,
   submitHint,
   voteOnProposal,
 } from './gameStore.js';
@@ -105,7 +106,18 @@ async function runOnePlayer(
         }
 
         if (action.type === 'propose_guess') {
-          createProposal(gameId, team, player.id, 'guess', { word: action.word });
+          try {
+            createProposal(gameId, team, player.id, 'guess', { word: action.word });
+          } catch (propErr) {
+            const errMsg = propErr instanceof Error ? propErr.message : String(propErr);
+            if (errMsg.includes('not on the board') || errMsg.includes('already been revealed')) {
+              // Invalid guess word — log and continue (LLM will see it failed in next round)
+              console.log(`LLM ${player.name} proposed invalid guess "${action.word}": ${errMsg}`);
+              postChatMessage(gameId, team, player.id, `❌ Cannot guess "${action.word}" — ${errMsg}`);
+              return false;
+            }
+            throw propErr; // Re-throw other errors
+          }
         } else if (action.type === 'propose_end_turn') {
           createProposal(gameId, team, player.id, 'end_turn', {});
         } else if (action.type === 'vote') {
@@ -115,7 +127,12 @@ async function runOnePlayer(
 
       return true;
     } catch (err) {
-      console.error(`LLM ${player.name} error:`, err instanceof Error ? err.message : err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`LLM ${player.name} error:`, msg);
+      // Surface connection/config errors to the frontend
+      if (msg.includes('fetch') || msg.includes('Fetch') || msg.includes('ECONNREFUSED') || msg.includes('failed') || msg.includes('401') || msg.includes('403') || msg.includes('404')) {
+        setLlmError(gameId, `LLM error (${player.name}): ${msg}`);
+      }
       return false;
     }
   }

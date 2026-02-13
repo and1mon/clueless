@@ -59,4 +59,5 @@ export interface GameState {
   winner?: TeamColor;
   loserReason?: string;
   deliberating: Record<TeamColor, boolean>;
+  llmError?: string;
 }

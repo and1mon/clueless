@@ -147,11 +147,12 @@ export class LlmClient {
           : '  {"type":"propose_guess","word":"boardword"} — propose a guess\n  {"type":"propose_end_turn"} — propose stopping',
         '  {"type":"none"} — just discuss, no action yet',
         '',
-        'RULES:',
+        'CRITICAL RULES:',
         '- Only ONE proposal can be pending at a time. If there is one, you MUST vote on it.',
         '- You CANNOT vote on your own proposal.',
-        '- Do NOT propose a word that is already revealed.',
-        '- Only propose words that are actually on the board.',
+        '- ONLY propose words that are currently on the board (see BOARD section above).',
+        '- NEVER propose a word that is already revealed or guessed.',
+        '- Double-check the word exists in the unrevealed board words before proposing.',
       ].join('\n');
     } else {
       roleInstructions = [

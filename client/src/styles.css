@@ -246,6 +246,26 @@ body {
 
 .expand-btn:hover { color: var(--text); }
 
+.personality-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.personality-actions button {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.personality-actions button:hover { background: var(--card-hover); }
+.personality-actions button.secondary { color: var(--muted); }
+
 .llm-player-details {
   display: flex;
   flex-direction: column;
@@ -345,29 +365,30 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.7rem;
   width: 100%;
-  max-width: 720px;
-  margin-bottom: 0.5rem;
+  max-width: 800px;
+  margin-bottom: 1rem;
 }
 
 .game-status {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.8rem;
   flex-wrap: wrap;
   justify-content: center;
+  font-size: 1.05rem;
 }
 
 .winner-banner {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
   font-weight: 800;
 }
 
-.phase { font-size: 0.95rem; color: var(--muted); }
+.phase { font-size: 1rem; color: var(--muted); }
 
 .hint-word {
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   font-weight: 800;
   color: var(--text);
   letter-spacing: 0.03em;
@@ -377,20 +398,20 @@ body {
   background: var(--blue);
   color: #fff;
   font-weight: 700;
-  font-size: 1rem;
-  padding: 0.2rem 0.65rem;
+  font-size: 1.2rem;
+  padding: 0.3rem 0.75rem;
   border-radius: 999px;
-  min-width: 1.8rem;
+  min-width: 2rem;
   text-align: center;
 }
 
 .hint-progress {
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   color: var(--muted);
   font-weight: 600;
 }
 
-.winner { font-weight: 700; font-size: 1rem; }
+.winner { font-weight: 700; font-size: 1.1rem; }
 
 .new-game-btn {
   padding: 0.4rem 0.8rem;
@@ -409,13 +430,14 @@ body {
 .game-layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.2fr 1fr;
   min-height: 0;
+  gap: 0.5rem;
 }
 
 /* --- Board --- */
 .board-section {
-  padding: 1rem;
+  padding: 1.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -426,17 +448,17 @@ body {
 .board-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 0.5rem;
+  gap: 0.75rem;
   width: 100%;
-  max-width: 720px;
+  max-width: 800px;
 }
 
 .card {
   border: 2px solid var(--border);
-  border-radius: 10px;
-  padding: 1rem 0.4rem;
+  border-radius: 12px;
+  padding: 1.5rem 0.6rem;
   text-align: center;
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
@@ -580,6 +602,14 @@ button.reject { background: var(--red); color: #fff; }
 .bubble-row.theirs { justify-content: flex-start; }
 .bubble-row.system-row { justify-content: center; }
 
+/* Turn divider */
+.turn-divider {
+  margin: 1.2rem 0 0.8rem;
+  border: 0;
+  border-top: 2px solid var(--border);
+  opacity: 0.5;
+}
+
 /* System messages */
 .system-msg {
   font-size: 0.75rem;
@@ -604,6 +634,186 @@ button.reject { background: var(--red); color: #fff; }
 
 .action-msg.team-red { border-left: 3px solid var(--red); }
 .action-msg.team-blue { border-left: 3px solid var(--blue); }
+
+/* Vote messages */
+.vote-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.vote-accept {
+  background: rgba(22, 163, 74, 0.15);
+  color: var(--green);
+  border: 1px solid rgba(22, 163, 74, 0.3);
+}
+
+.vote-reject {
+  background: rgba(220, 38, 38, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.vote-icon {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+/* Proposal messages */
+.proposal-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  color: var(--text);
+}
+
+.proposal-msg.team-red { border-color: var(--red); }
+.proposal-msg.team-blue { border-color: var(--blue); }
+
+.proposal-icon { font-size: 0.9rem; }
+
+/* Retry prompt */
+.retry-prompt {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--muted);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.retry-btn {
+  padding: 0.3rem 0.7rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--blue);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Team roster */
+.team-roster {
+  display: flex;
+  gap: 2.5rem;
+  justify-content: center;
+  width: 100%;
+  max-width: 800px;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.roster-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 200px;
+  flex: 1;
+}
+
+.roster-header {
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+  padding-bottom: 0.4rem;
+  border-bottom: 2px solid;
+}
+
+.roster-red .roster-header { color: var(--red); border-color: var(--red); }
+.roster-blue .roster-header { color: var(--blue); border-color: var(--blue); }
+
+.roster-players {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.roster-player {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.95rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: default;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.roster-player:hover {
+  background: var(--bg);
+  transform: translateY(-1px);
+  z-index: 10;
+}
+
+.roster-player.roster-you {
+  font-weight: 700;
+  border: 2px solid var(--primary);
+  background: var(--primary-bg);
+}
+
+.roster-icon {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.roster-name {
+  flex: 1;
+}
+
+/* Player hover card */
+.player-card {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.4rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 200;
+  min-width: 220px;
+  white-space: normal;
+}
+
+.player-card-row {
+  margin-bottom: 0.4rem;
+  line-height: 1.4;
+}
+
+.player-card-row:last-child {
+  margin-bottom: 0;
+}
+
+.player-card strong {
+  color: var(--primary);
+  display: inline-block;
+  min-width: 85px;
+}
 
 /* Bubbles */
 .bubble {

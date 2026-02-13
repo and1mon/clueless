@@ -77,6 +77,7 @@ export interface GameState {
   loserReason?: string;
   llmConfig: LlmConfig;
   deliberating: Record<TeamColor, boolean>;
+  llmError?: string;
 }
 
 export interface LlmPlayerInput {
