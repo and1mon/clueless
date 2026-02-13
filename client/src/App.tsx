@@ -77,14 +77,13 @@ export function App(): JSX.Element {
   const [setup, setSetup] = useState({
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
-    humanRole: 'spectator' as PlayerRole | 'spectator',
-    redCount: 3,
-    blueCount: 3,
+    humanRole: 'operative' as PlayerRole | 'spectator',
+    teamSize: 4,
     baseUrl: '',
     model: '',
     apiKey: '',
     redPlayers: defaultLlmPlayers('red', 3),
-    bluePlayers: defaultLlmPlayers('blue', 3),
+    bluePlayers: defaultLlmPlayers('blue', 4),
   });
 
   const isSpectator = setup.humanRole === 'spectator';
@@ -387,25 +386,40 @@ export function App(): JSX.Element {
     setError('');
   };
 
-  const updateLlmCount = (team: TeamColor, count: number): void => {
-    const clamped = Math.max(0, Math.min(6, count));
-    const key = team === 'red' ? 'redPlayers' : 'bluePlayers';
-    const countKey = team === 'red' ? 'redCount' : 'blueCount';
-    setSetup((s) => {
-      const current = s[key];
-      let next: LlmPlayerSetup[];
-      if (clamped > current.length) {
-        const prefix = team === 'red' ? 'Red' : 'Blue';
-        next = [...current, ...Array.from({ length: clamped - current.length }, (_, i) => ({
-          name: `${prefix}-${current.length + i + 1}`,
-          model: '',
-          personality: '',
-        }))];
-      } else {
-        next = current.slice(0, clamped);
-      }
-      return { ...s, [countKey]: clamped, [key]: next };
-    });
+  // Compute LLM counts from teamSize + human placement
+  const llmCount = (team: TeamColor): number => {
+    if (setup.humanRole === 'spectator') return setup.teamSize;
+    return team === setup.humanTeam ? setup.teamSize - 1 : setup.teamSize;
+  };
+
+  const syncPlayers = (s: typeof setup, newSize: number, newTeam: TeamColor, newRole: string): typeof setup => {
+    const redLlm = newRole === 'spectator' ? newSize : (newTeam === 'red' ? newSize - 1 : newSize);
+    const blueLlm = newRole === 'spectator' ? newSize : (newTeam === 'blue' ? newSize - 1 : newSize);
+    const resize = (arr: LlmPlayerSetup[], team: TeamColor, target: number): LlmPlayerSetup[] => {
+      if (target <= arr.length) return arr.slice(0, target);
+      const prefix = team === 'red' ? 'Red' : 'Blue';
+      return [...arr, ...Array.from({ length: target - arr.length }, (_, i) => ({
+        name: `${prefix}-${arr.length + i + 1}`, model: '', personality: '',
+      }))];
+    };
+    return { ...s, teamSize: newSize, humanTeam: newTeam, humanRole: newRole as PlayerRole | 'spectator',
+      redPlayers: resize(s.redPlayers, 'red', redLlm),
+      bluePlayers: resize(s.bluePlayers, 'blue', blueLlm),
+    };
+  };
+
+  const changeTeamSize = (size: number): void => {
+    const clamped = Math.max(2, Math.min(6, size));
+    setSetup((s) => syncPlayers(s, clamped, s.humanTeam, s.humanRole));
+  };
+
+  const joinTeam = (team: TeamColor): void => {
+    if (setup.humanRole === 'spectator') return;
+    setSetup((s) => syncPlayers(s, s.teamSize, team, s.humanRole));
+  };
+
+  const setRole = (role: string): void => {
+    setSetup((s) => syncPlayers(s, s.teamSize, s.humanTeam, role));
   };
 
   const updateLlmPlayer = (team: TeamColor, index: number, field: keyof LlmPlayerSetup, value: string): void => {
@@ -452,7 +466,7 @@ export function App(): JSX.Element {
           humanName: setup.humanName,
           humanTeam: setup.humanTeam,
           humanRole: setup.humanRole,
-          llmPlayers: { red: setup.redCount, blue: setup.blueCount },
+          llmPlayers: { red: llmCount('red'), blue: llmCount('blue') },
           llmPlayerConfigs: {
             red: setup.redPlayers.map((p) => ({
               name: p.name || undefined,
@@ -547,22 +561,29 @@ export function App(): JSX.Element {
   if (!game) {
     const renderPlayerList = (team: TeamColor) => {
       const players = team === 'red' ? setup.redPlayers : setup.bluePlayers;
-      const count = team === 'red' ? setup.redCount : setup.blueCount;
+      const isHumanTeam = team === setup.humanTeam && setup.humanRole !== 'spectator';
+      const isJoined = isHumanTeam;
       return (
-        <div className="team-setup">
-          <div className="team-setup-header">
-            <span className={`team-label ${team}`}>{team === 'red' ? '🔴 Red Team' : '🔵 Blue Team'}</span>
-            <div className="llm-count-ctrl">
-              <button type="button" onClick={() => updateLlmCount(team, count - 1)}>−</button>
-              <span>{count}</span>
-              <button type="button" onClick={() => updateLlmCount(team, count + 1)}>+</button>
-            </div>
+        <div
+          className={`team-card ${team}${isJoined ? ' joined' : ''}`}
+          onClick={() => joinTeam(team)}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="team-card-header">
+            <span className={`team-label ${team}`}>{team === 'red' ? 'Red Team' : 'Blue Team'}</span>
+            <span className="team-size">{setup.teamSize} players</span>
           </div>
+          {isJoined ? (
+            <div className="team-human-slot">
+              <span className="human-badge">You ({setup.humanRole})</span>
+            </div>
+          ) : null}
           {players.map((p, i) => {
             const key = `${team}-${i}`;
             const isExpanded = expandedPlayer === key;
             return (
-              <div key={key} className="llm-player-row">
+              <div key={key} className="llm-player-row" onClick={(e) => e.stopPropagation()}>
                 <div className="llm-player-summary">
                   <input
                     value={p.name}
@@ -571,17 +592,17 @@ export function App(): JSX.Element {
                     className="player-name-input"
                   />
                   <button type="button" className="expand-btn" onClick={() => setExpandedPlayer(isExpanded ? null : key)}>
-                    {isExpanded ? '▾' : '▸'} Settings
+                    {isExpanded ? '▾' : '▸'}
                   </button>
                 </div>
                 {isExpanded ? (
                   <div className="llm-player-details">
-                    <label>Model override <input value={p.model} onChange={(e) => updateLlmPlayer(team, i, 'model', e.target.value)} placeholder="Use default" /></label>
+                    <label>Model <input value={p.model} onChange={(e) => updateLlmPlayer(team, i, 'model', e.target.value)} placeholder="Use default" /></label>
                     <label>Personality
                       <textarea
                         value={p.personality}
                         onChange={(e) => updateLlmPlayer(team, i, 'personality', e.target.value)}
-                        placeholder="e.g. You are bold and decisive. You trust your instincts."
+                        placeholder="e.g. You are bold and decisive."
                         rows={2}
                       />
                     </label>
@@ -597,46 +618,52 @@ export function App(): JSX.Element {
     return (
       <main className="setup-screen">
         <div className="setup-header">
-          <h1>🕵️ Clueless</h1>
+          <div>
+            <h1>Clueless</h1>
+            <p className="subtitle">Codenames with LLM teammates</p>
+          </div>
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
-        <p className="subtitle">Codenames with LLM teammates</p>
         <form onSubmit={createGame} className="setup-form">
-          <fieldset className="setup-fieldset">
-            <legend>You</legend>
-            <label>Name <input value={setup.humanName} onChange={(e) => setSetup((s) => ({ ...s, humanName: e.target.value }))} /></label>
-            <div className="setup-row">
-              <label>Team
-                <select value={setup.humanTeam} onChange={(e) => setSetup((s) => ({ ...s, humanTeam: e.target.value as TeamColor }))}>
-                  <option value="red">Red</option><option value="blue">Blue</option>
-                </select>
+          <div className="setup-top-bar">
+            <div className="setup-top-group">
+              <label>Your name
+                <input value={setup.humanName} onChange={(e) => setSetup((s) => ({ ...s, humanName: e.target.value }))} />
               </label>
               <label>Role
-                <select value={setup.humanRole} onChange={(e) => setSetup((s) => ({ ...s, humanRole: e.target.value as PlayerRole | 'spectator' }))}>
+                <select value={setup.humanRole} onChange={(e) => setRole(e.target.value)}>
                   <option value="operative">Operative</option>
                   <option value="spymaster">Spymaster</option>
                   <option value="spectator">Spectator</option>
                 </select>
               </label>
+              <label>Team size
+                <div className="team-size-ctrl">
+                  <button type="button" onClick={() => changeTeamSize(setup.teamSize - 1)}>−</button>
+                  <span>{setup.teamSize}</span>
+                  <button type="button" onClick={() => changeTeamSize(setup.teamSize + 1)}>+</button>
+                </div>
+              </label>
             </div>
-          </fieldset>
-
-          <fieldset className="setup-fieldset">
-            <legend>LLM Players</legend>
             <div className="personality-actions">
-              <button type="button" onClick={assignRandomPersonalities}>🎲 Random personalities</button>
+              <button type="button" onClick={assignRandomPersonalities}>Randomize</button>
               <button type="button" onClick={clearAllPersonalities} className="secondary">Clear all</button>
             </div>
+          </div>
+
+          <div className="teams-columns">
             {renderPlayerList('red')}
             {renderPlayerList('blue')}
-          </fieldset>
+          </div>
 
-          <fieldset className="setup-fieldset">
-            <legend>LLM Connection</legend>
-            <label>Endpoint <input value={setup.baseUrl} onChange={(e) => setSetup((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="from .env" /></label>
-            <label>Default model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
-            <label>API key <input value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} placeholder="from .env" type="password" /></label>
-          </fieldset>
+          <details className="connection-details">
+            <summary>Connection settings</summary>
+            <div className="connection-fields">
+              <label>Endpoint <input value={setup.baseUrl} onChange={(e) => setSetup((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="from .env" /></label>
+              <label>Default model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
+              <label>API key <input value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} placeholder="from .env" type="password" /></label>
+            </div>
+          </details>
 
           <button disabled={loading} type="submit">{loading ? 'Starting…' : 'Start Game'}</button>
         </form>
