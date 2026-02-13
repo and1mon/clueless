@@ -93,20 +93,36 @@ export class LlmClient {
     // Build role-specific instructions
     let roleInstructions: string;
 
-    const unrevealed = game.cards.filter((c) => !c.revealed).map((c) => c.word.toLowerCase());
+    const allBoardWords = game.cards.map((c) => c.word.toLowerCase());
 
     if (isSpymaster && isHintPhase) {
+      const enemyTeam = team === 'red' ? 'blue' : 'red';
+      const myWords = game.cards.filter((c) => c.owner === team && !c.revealed).map((c) => c.word);
+      const enemyWords = game.cards.filter((c) => c.owner === enemyTeam && !c.revealed).map((c) => c.word);
+      const assassinWords = game.cards.filter((c) => c.owner === 'assassin' && !c.revealed).map((c) => c.word);
+      const neutralWords = game.cards.filter((c) => c.owner === 'neutral' && !c.revealed).map((c) => c.word);
+      const revealedWords = game.cards.filter((c) => c.revealed).map((c) => `${c.word}(${c.owner})`);
+
       roleInstructions = [
-        `You are the SPYMASTER for ${team}. You can see which words belong to which team.`,
-        'Give a one-word hint and count of how many of YOUR team\'s words it relates to.',
+        `You are the SPYMASTER for team ${team.toUpperCase()}.`,
         '',
-        `FORBIDDEN WORDS (your hint MUST NOT be any of these): ${unrevealed.join(', ')}`,
+        `YOUR TEAM'S WORDS (you want your team to guess these): ${myWords.join(', ')}`,
+        `ENEMY WORDS (${enemyTeam} — AVOID, guessing these helps the enemy): ${enemyWords.join(', ')}`,
+        `ASSASSIN (NEVER let your team guess this — instant loss): ${assassinWords.join(', ')}`,
+        `NEUTRAL (not helpful, wastes a guess): ${neutralWords.join(', ')}`,
+        revealedWords.length ? `ALREADY REVEALED: ${revealedWords.join(', ')}` : '',
         '',
-        'Your hint must be a single word that is NOT on the board at all.',
-        'Do NOT explain your reasoning in the message — just give the hint silently.',
-        'Set message to "..." and set action:',
-        '  {"type":"hint","word":"yourword","count":N}',
-      ].join('\n');
+        'YOUR TASK: Give a ONE-WORD hint and a number.',
+        '- The hint should connect as many of YOUR team\'s words as possible.',
+        '- The hint must NOT be any word on the board (including revealed words).',
+        '- Avoid hints that could lead to enemy or assassin words.',
+        '- The number is how many of your words relate to the hint.',
+        '',
+        `FORBIDDEN WORDS (your hint MUST NOT be any of these): ${allBoardWords.join(', ')}`,
+        '',
+        'Return ONLY JSON. Set message to "..." (do NOT explain your reasoning).',
+        'Set action: {"type":"hint","word":"yourword","count":N}',
+      ].filter(Boolean).join('\n');
     } else if (isSpymaster && !isHintPhase) {
       roleInstructions = [
         'You are the SPYMASTER. Guessing phase is active — you MUST stay silent.',

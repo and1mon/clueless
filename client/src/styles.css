@@ -236,6 +236,18 @@ body { background: var(--bg); color: var(--text); }
   border-bottom-color: var(--blue);
 }
 
+.tab.active.red-tab { border-bottom-color: var(--red); }
+.tab.active.blue-tab { border-bottom-color: var(--blue); }
+
+.spectator-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #30363d;
+  color: var(--muted);
+}
+
 .actions {
   padding: 0.5rem 0.7rem;
   border-bottom: 1px solid var(--border);

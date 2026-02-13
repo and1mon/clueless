@@ -10,13 +10,13 @@ export function App(): JSX.Element {
   const [guessWord, setGuessWord] = useState('');
   const [hintWord, setHintWord] = useState('');
   const [hintCount, setHintCount] = useState('2');
-  const [chatTab, setChatTab] = useState<'my' | 'enemy'>('my');
+  const [chatTab, setChatTab] = useState<'red' | 'blue'>('red');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [setup, setSetup] = useState({
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
-    humanRole: 'operative' as PlayerRole,
+    humanRole: 'operative' as PlayerRole | 'spectator',
     redLlm: '2',
     blueLlm: '3',
     baseUrl: '',
@@ -24,6 +24,7 @@ export function App(): JSX.Element {
     apiKey: '',
   });
 
+  const isSpectator = setup.humanRole === 'spectator';
   const humanPlayer = useMemo(
     () => game ? Object.values(game.players).find((p) => p.type === 'human') : undefined,
     [game],
@@ -36,13 +37,13 @@ export function App(): JSX.Element {
     return Object.fromEntries(Object.values(game.players).map((p) => [p.id, p.name]));
   }, [game]);
 
-  const isMyTurn = game ? game.turn.activeTeam === myTeam && !game.winner : false;
+  const isMyTurn = game && !isSpectator ? game.turn.activeTeam === myTeam && !game.winner : false;
 
   // Auto-switch chat tab to the active team
   useEffect(() => {
     if (!game || game.winner) return;
-    setChatTab(game.turn.activeTeam === myTeam ? 'my' : 'enemy');
-  }, [game?.turn.activeTeam, myTeam, game?.winner]);
+    setChatTab(game.turn.activeTeam);
+  }, [game?.turn.activeTeam, game?.winner]);
 
   // Auto-refresh
   useEffect(() => {
@@ -176,9 +177,10 @@ export function App(): JSX.Element {
               </select>
             </label>
             <label>Role
-              <select value={setup.humanRole} onChange={(e) => setSetup((s) => ({ ...s, humanRole: e.target.value as PlayerRole }))}>
+              <select value={setup.humanRole} onChange={(e) => setSetup((s) => ({ ...s, humanRole: e.target.value as PlayerRole | 'spectator' }))}>
                 <option value="operative">Operative (guesser)</option>
                 <option value="spymaster">Spymaster (hint-giver)</option>
+                <option value="spectator">Spectator (watch AI play)</option>
               </select>
             </label>
           </div>
@@ -198,13 +200,14 @@ export function App(): JSX.Element {
 
   // --- GAME ---
   const turn = game.turn;
-  const activeChat = chatTab === 'my' ? game.chats[myTeam] : game.chats[enemyTeam];
-  const pendingProposals = game.proposals[myTeam].filter((p) => p.status === 'pending');
+  const activeChat = game.chats[chatTab];
+  const pendingProposals = isSpectator ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
   const redLeft = game.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
   const blueLeft = game.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
-  const viewingTeam = chatTab === 'my' ? myTeam : enemyTeam;
-  const isThinking = game.deliberating[viewingTeam];
-  const isSpymaster = humanPlayer?.role === 'spymaster';
+  const isThinking = game.deliberating[chatTab];
+  const isHumanSpymaster = humanPlayer?.role === 'spymaster';
+  const showSpyView = isSpectator || isHumanSpymaster;
+  const canAct = !isSpectator && chatTab === myTeam;
 
   return (
     <main className="game-screen">
@@ -217,7 +220,7 @@ export function App(): JSX.Element {
         </div>
         <div className="turn-info">
           {game.winner ? (
-            <span className="winner">�� {game.winner} wins!</span>
+            <span className="winner">🏆 {game.winner} wins!</span>
           ) : (
             <>
               <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
@@ -229,6 +232,7 @@ export function App(): JSX.Element {
             </>
           )}
         </div>
+        {isSpectator ? <span className="spectator-badge">👁 Spectating</span> : null}
         <button className="new-game-btn" onClick={newGame}>New Game</button>
       </header>
 
@@ -239,13 +243,13 @@ export function App(): JSX.Element {
         <section className="board-section">
           <div className="board-grid">
             {game.cards.map((card) => {
-              const showOwner = isSpymaster && card.owner !== 'neutral' && !card.revealed;
+              const showOwner = showSpyView && card.owner !== 'neutral' && !card.revealed;
               return (
                 <button
                   key={card.word}
                   type="button"
                   className={`card ${card.revealed ? `revealed ${card.owner}` : 'hidden'} ${showOwner ? `spy-${card.owner}` : ''}`}
-                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isSpymaster}
+                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isHumanSpymaster}
                   onClick={() => proposeGuess(card.word)}
                   title={showOwner ? card.owner : undefined}
                 >
@@ -260,18 +264,18 @@ export function App(): JSX.Element {
         <section className="chat-section">
           {/* Tab switcher */}
           <div className="chat-tabs">
-            <button className={chatTab === 'my' ? 'tab active' : 'tab'} onClick={() => setChatTab('my')}>
-              My Team ({myTeam})
+            <button className={chatTab === 'red' ? 'tab active red-tab' : 'tab'} onClick={() => setChatTab('red')}>
+              Red Team
             </button>
-            <button className={chatTab === 'enemy' ? 'tab active' : 'tab'} onClick={() => setChatTab('enemy')}>
-              Enemy ({enemyTeam})
+            <button className={chatTab === 'blue' ? 'tab active blue-tab' : 'tab'} onClick={() => setChatTab('blue')}>
+              Blue Team
             </button>
           </div>
 
-          {/* Actions — only on my team tab */}
-          {chatTab === 'my' ? (
+          {/* Actions — only when playing (not spectating) and viewing own team */}
+          {canAct ? (
             <div className="actions">
-              {isMyTurn && turn.phase === 'hint' && isSpymaster ? (
+              {isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? (
                 <div className="action-row">
                   <input placeholder="Hint word" value={hintWord} onChange={(e) => setHintWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendHint(); }} />
                   <input type="number" min={1} value={hintCount} onChange={(e) => setHintCount(e.target.value)} className="count-input" />
@@ -279,7 +283,7 @@ export function App(): JSX.Element {
                 </div>
               ) : null}
 
-              {isMyTurn && turn.phase === 'guess' && !isSpymaster ? (
+              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster ? (
                 <div className="action-row">
                   <input placeholder="Guess a word (or click the board)" value={guessWord} onChange={(e) => setGuessWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') proposeGuess(); }} />
                   <button onClick={() => proposeGuess()}>Propose</button>
@@ -287,7 +291,6 @@ export function App(): JSX.Element {
                 </div>
               ) : null}
 
-              {/* Pending proposals */}
               {pendingProposals.length > 0 ? (
                 <div className="proposals">
                   {pendingProposals.map((p) => (
@@ -332,8 +335,8 @@ export function App(): JSX.Element {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Chat input — only on my team tab */}
-          {chatTab === 'my' ? (
+          {/* Chat input — only when playing */}
+          {!isSpectator && chatTab === myTeam ? (
             <div className="chat-input">
               <input
                 placeholder="Talk to your team…"

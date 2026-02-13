@@ -4,6 +4,7 @@ import {
   type CreateGameInput,
   type GameState,
   type Player,
+  type PlayerRole,
   type Proposal,
   type ProposalKind,
   type TeamColor,
@@ -54,11 +55,12 @@ function createPlayers(input: CreateGameInput): {
   players: Record<string, Player>;
   teams: GameState['teams'];
 } {
+  const isSpectator = input.humanRole === 'spectator';
   const humanTeam = input.humanTeam ?? 'red';
-  const humanRole = input.humanRole ?? 'operative';
+  const humanRole = isSpectator ? 'operative' : (input.humanRole ?? 'operative') as PlayerRole;
   const enemyTeam = otherTeam(humanTeam);
   const llmPerTeam = {
-    [humanTeam]: input.llmPlayers?.[humanTeam] ?? 2,
+    [humanTeam]: input.llmPlayers?.[humanTeam] ?? (isSpectator ? 3 : 2),
     [enemyTeam]: input.llmPlayers?.[enemyTeam] ?? 3,
   };
 
@@ -71,23 +73,25 @@ function createPlayers(input: CreateGameInput): {
   const shuffledPersonalities = shuffle(PERSONALITIES);
   let personalityIdx = 0;
 
-  // Create human
-  const humanId = `human-${randomUUID()}`;
-  players[humanId] = {
-    id: humanId,
-    name: input.humanName?.trim() || 'You',
-    team: humanTeam,
-    role: humanRole,
-    type: 'human',
-  };
-  teams[humanTeam].players.push(humanId);
+  // Create human (unless spectator)
+  if (!isSpectator) {
+    const humanId = `human-${randomUUID()}`;
+    players[humanId] = {
+      id: humanId,
+      name: input.humanName?.trim() || 'You',
+      team: humanTeam,
+      role: humanRole,
+      type: 'human',
+    };
+    teams[humanTeam].players.push(humanId);
+  }
 
   // Create LLMs
   (['red', 'blue'] as TeamColor[]).forEach((team) => {
     const llmCount = llmPerTeam[team] ?? 0;
     for (let i = 0; i < llmCount; i += 1) {
       const id = `llm-${team}-${i + 1}-${randomUUID()}`;
-      const name = team === humanTeam ? `Teammate-${i + 1}` : `Opponent-${i + 1}`;
+      const name = `${team === 'red' ? 'Red' : 'Blue'}-${i + 1}`;
       const personality = shuffledPersonalities[personalityIdx % shuffledPersonalities.length];
       personalityIdx += 1;
       players[id] = {

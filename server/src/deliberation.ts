@@ -55,7 +55,7 @@ async function runOnePlayer(
   }));
 
   const client = new LlmClient(game.llmConfig);
-  const boardWords = game.cards.filter((c) => !c.revealed).map((c) => c.word.toLowerCase());
+  const boardWords = game.cards.map((c) => c.word.toLowerCase());
 
   // For spymaster hints, retry up to 5 times if the hint word is on the board
   const isHinting = player.role === 'spymaster' && game.turn.phase === 'hint';
@@ -79,7 +79,7 @@ async function runOnePlayer(
 
       const action = response.action;
 
-      // Validate hint word is not on the board
+      // Validate hint word is not on the board (pre-check before submitHint)
       if (action.type === 'hint' && boardWords.includes(action.word.toLowerCase())) {
         console.log(`LLM ${player.name} gave invalid hint "${action.word}" (on board), retrying...`);
         rejectedWords.push(action.word);
@@ -88,7 +88,13 @@ async function runOnePlayer(
 
       // Spymaster hint: only post the hint itself, not the reasoning
       if (action.type === 'hint') {
-        submitHint(gameId, team, player.id, action.word, action.count);
+        try {
+          submitHint(gameId, team, player.id, action.word, action.count);
+        } catch (hintErr) {
+          console.log(`LLM ${player.name} hint "${action.word}" rejected: ${hintErr instanceof Error ? hintErr.message : hintErr}, retrying...`);
+          rejectedWords.push(action.word);
+          continue;
+        }
       } else {
         // Post chat message for non-hint actions
         if (response.message && response.message !== '...') {

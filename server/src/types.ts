@@ -81,7 +81,7 @@ export interface GameState {
 export interface CreateGameInput {
   humanName?: string;
   humanTeam?: TeamColor;
-  humanRole?: PlayerRole;
+  humanRole?: PlayerRole | 'spectator';
   llmPlayers?: Partial<Record<TeamColor, number>>;
   llm?: Partial<LlmConfig>;
 }
