@@ -853,8 +853,7 @@ export function App(): JSX.Element {
               <div className="game-status winner-banner">{boardGame.winner} wins!</div>
             ) : turn.phase === 'banter' ? (
               <div className="game-status">
-                <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
-                <span className="phase">Trash talk...</span>
+                <span className="phase">Between turns...</span>
               </div>
             ) : turn.phase === 'guess' && turn.hintWord ? (
               <div className="game-status">

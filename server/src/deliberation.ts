@@ -121,7 +121,7 @@ function isGameOver(gameId: string): boolean {
 
 function isStillActiveTeam(gameId: string, team: TeamColor): boolean {
   const g = getGame(gameId);
-  return !g.winner && g.turn.activeTeam === team;
+  return !g.winner && g.turn.activeTeam === team && g.turn.phase !== 'banter';
 }
 
 function validateActionForTurn(params: {
@@ -511,13 +511,8 @@ export async function runBanterRound(gameId: string): Promise<void> {
     return;
   }
 
-  const incomingTeam = game.turn.activeTeam;
-  const outgoingTeam = game.turn.previousTeam;
-  if (!outgoingTeam) {
-    logInfo('runBanterRound', `No previous team, ending banter`, { gameId });
-    endBanter(gameId);
-    return;
-  }
+  const outgoingTeam = game.turn.activeTeam;           // team that just played
+  const incomingTeam = otherTeam(outgoingTeam);         // team about to play
 
   const outOps = getTeamLlmPlayers(game, outgoingTeam);
   const inOps = getTeamLlmPlayers(game, incomingTeam);
@@ -558,17 +553,6 @@ export async function runBanterRound(gameId: string): Promise<void> {
     endBanter(gameId);
   }
   logInfo('runBanterRound', `Banter round completed`, { gameId });
-}
-
-// ---------------------------------------------------------------------------
-// C1: Single banter handler for autoplay
-// ---------------------------------------------------------------------------
-async function handleBanterIfNeeded(gameId: string): Promise<void> {
-  const game = getGame(gameId);
-  if (!game.winner && game.turn.phase === 'banter') {
-    logInfo('handleBanterIfNeeded', `Banter needed, triggering`, { gameId });
-    await runBanterRound(gameId);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -699,9 +683,6 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
 export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds = 20): Promise<boolean> {
   logInfo('runFullLlmTurn', `Starting full LLM turn`, { gameId, team, maxRounds });
   
-  // Phase 1: Handle any pending banter (before acquiring lock — involves both teams)
-  await handleBanterIfNeeded(gameId);
-
   if (!acquireLock(gameId, team)) {
     logWarn('runFullLlmTurn', `Could not acquire lock`, { gameId, team });
     return false;

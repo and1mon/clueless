@@ -58,7 +58,6 @@ export interface GameState {
     hintTargets?: string[];
     guessesMade: number;
     maxGuesses: number;
-    previousTeam?: TeamColor;
   };
   winner?: TeamColor;
   loserReason?: string;

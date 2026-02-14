@@ -35,7 +35,6 @@ export interface TurnState {
   hintTargets?: string[];
   guessesMade: number;
   maxGuesses: number;
-  previousTeam?: TeamColor;
 }
 
 export interface Message {

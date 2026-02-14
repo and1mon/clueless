@@ -38,13 +38,6 @@ function parseTeam(value: string): TeamColor {
 // C1+C2: Simplified autoplay — handles banter once, then loops all-LLM turns
 async function autoplayIfNeeded(gameId: string): Promise<void> {
   logServer('INFO', 'autoplayIfNeeded', `Starting autoplay check`, { gameId });
-  
-  // Handle any pending banter first
-  const game = getGame(gameId);
-  if (!game.winner && game.turn.phase === 'banter') {
-    logServer('INFO', 'autoplayIfNeeded', `Handling banter phase (start)`, { gameId });
-    await runBanterRound(gameId);
-  }
 
   // Keep running while active team is all-LLM (with a hard safety cap)
   const maxAutoplayTurns = 100;
@@ -54,6 +47,14 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
       logServer('INFO', 'autoplayIfNeeded', `Game has winner, stopping loop`, { gameId, winner: current.winner, iteration: i });
       break;
     }
+
+    // Handle banter between turns
+    if (current.turn.phase === 'banter') {
+      logServer('INFO', 'autoplayIfNeeded', `Handling banter phase`, { gameId, iteration: i });
+      await runBanterRound(gameId);
+      continue;
+    }
+
     if (hasHumanPlayer(current, current.turn.activeTeam)) {
       logServer('INFO', 'autoplayIfNeeded', `Human player on active team, stopping loop`, { gameId, activeTeam: current.turn.activeTeam, iteration: i });
       break;
@@ -66,13 +67,6 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
     }
   }
 
-  // Handle banter if we ended up in banter phase (e.g., after a turn switch)
-  const afterLoop = getGame(gameId);
-  if (!afterLoop.winner && afterLoop.turn.phase === 'banter') {
-    logServer('INFO', 'autoplayIfNeeded', `Handling banter phase (after loop)`, { gameId });
-    await runBanterRound(gameId);
-  }
-
   // Auto-trigger spymaster hint if a human team is now active
   const updated = getGame(gameId);
   if (!updated.winner) {
@@ -80,27 +74,12 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
     await autoSpymasterHint(gameId, updated.turn.activeTeam);
   }
 
-  // After human team's turn, check if turn switched to an all-LLM team
-  const afterHint = getGame(gameId);
-  if (!afterHint.winner && !hasHumanPlayer(afterHint, afterHint.turn.activeTeam)) {
-    logServer('INFO', 'autoplayIfNeeded', `Turn switched to all-LLM team, continuing autoplay`, { gameId, activeTeam: afterHint.turn.activeTeam });
-    // Handle banter if needed before LLM turn
-    if (afterHint.turn.phase === 'banter') {
-      await runBanterRound(gameId);
-    }
-    // Run the all-LLM team's turn
-    const postBanter = getGame(gameId);
-    if (!postBanter.winner && !hasHumanPlayer(postBanter, postBanter.turn.activeTeam)) {
-      await runFullLlmTurn(gameId, postBanter.turn.activeTeam, 20);
-    }
-  }
-
   // End-game banter if game just ended
   if (getGame(gameId).winner) {
     logServer('INFO', 'autoplayIfNeeded', `Game ended, running end-game banter`, { gameId });
     await runEndGameBanter(gameId);
   }
-  
+
   logServer('INFO', 'autoplayIfNeeded', `Autoplay completed`, { gameId });
 }
 

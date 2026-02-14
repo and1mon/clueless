@@ -288,10 +288,8 @@ function countRemaining(game: GameState, owner: TeamColor): number {
 }
 
 function switchTurn(game: GameState): void {
-  const previousTeam = game.turn.activeTeam;
-  game.turn.activeTeam = otherTeam(previousTeam);
+  // activeTeam stays as-is (team that just played)
   game.turn.phase = 'banter';
-  game.turn.previousTeam = previousTeam;
   game.awaitingHumanContinuation.red = false;
   game.awaitingHumanContinuation.blue = false;
   game.turn.hintWord = undefined;
@@ -299,14 +297,15 @@ function switchTurn(game: GameState): void {
   game.turn.hintTargets = undefined;
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = 0;
-  addSystemMessage(game, game.turn.activeTeam, `It's now ${game.turn.activeTeam}'s turn.`);
+  // NO system message here — moved to endBanter
 }
 
 export function endBanter(gameId: string): GameState {
   const game = getGame(gameId);
   if (game.turn.phase !== 'banter') throw new Error('Not in banter phase.');
+  game.turn.activeTeam = otherTeam(game.turn.activeTeam);
   game.turn.phase = 'hint';
-  game.turn.previousTeam = undefined;
+  addSystemMessage(game, game.turn.activeTeam, `It's now ${game.turn.activeTeam}'s turn.`);
   return game;
 }
 

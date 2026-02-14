@@ -178,7 +178,8 @@ function buildSituation(input: {
   lines.push(`Current turn: team ${game.turn.activeTeam}, phase: ${game.turn.phase}`);
 
   if (game.turn.phase === 'banter') {
-    lines.push(`Previous team: ${game.turn.previousTeam ?? 'unknown'}, next team: ${game.turn.activeTeam}`);
+    const nextTeam = game.turn.activeTeam === 'red' ? 'blue' : 'red';
+    lines.push(`Team ${game.turn.activeTeam} just finished. Next up: ${nextTeam}`);
     const banterBase = 'Banter phase: React to what just happened. Celebrate your team\'s reveals, trash-talk the other team. No strategy or hint discussion — just banter.';
     const banterExtra = player.role === 'spymaster' ? ' NEVER reveal or hint at which words belong to which team.' : '';
     lines.push(banterBase + banterExtra);
