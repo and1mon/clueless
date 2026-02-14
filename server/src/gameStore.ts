@@ -114,7 +114,7 @@ function createPlayers(input: CreateGameInput): {
         role: 'operative',
         team,
         type: 'llm',
-        personality: cfg?.personality?.trim() || defaultPersonality,
+        personality: input.llmNeutralMode ? undefined : (cfg?.personality?.trim() || defaultPersonality),
         model: cfg?.model?.trim() || teamDefaultModel || undefined,
         voice: pickVoice(personalityIdx - 1),
       };
