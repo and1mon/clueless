@@ -106,9 +106,17 @@ export class LlmClient {
         : 'Game over — you lost. React to it.';
     } else if (isBanterPhase) {
       const isOutgoing = game.turn.previousTeam === team;
-      roleInstructions = isOutgoing
-        ? 'Your turn just ended. Comment on it.'
-        : 'The other team just played. Respond.';
+      roleInstructions = [
+        'Banter phase is intermission between turns.',
+        `You are on team ${team}.`,
+        `Team that just finished: ${game.turn.previousTeam ?? 'unknown'}.`,
+        `Team that plays next after banter: ${game.turn.activeTeam}.`,
+        isOutgoing ? 'Your team just finished its turn.' : 'Your team is up next after banter.',
+        'Do NOT hint, guess, propose, or vote in banter.',
+        'Do NOT reference unrevealed board words like you are guessing.',
+        'Keep it to light reaction/taunt and momentum talk.',
+        'action: {"type":"none"}',
+      ].join('\n');
     } else if (isSpymaster && isHintPhase) {
       const enemyTeam = team === 'red' ? 'blue' : 'red';
       const myWords = game.cards.filter((c) => c.owner === team && !c.revealed).map((c) => c.word);
@@ -117,6 +125,7 @@ export class LlmClient {
 
       roleInstructions = [
         `You're the spymaster. Give a one-word hint + a number.`,
+        'Important: board words have no spatial positions; there is no "close", "next to", or adjacency logic in Codenames.',
         `Target these: ${myWords.join(', ')}`,
         `Avoid these: ${enemyWords.join(', ')} (enemy team), ${assassinWords.join(', ')} (assassin - instant loss)`,
         `Your hint CANNOT be any board word: ${allBoardWords.join(', ')}`,
@@ -140,7 +149,7 @@ export class LlmClient {
           voteInstructions = `You proposed ${proposal.kind === 'guess' ? `guessing "${proposal.payload.word}"` : 'ending the turn'}. Wait for votes.`;
         } else {
           const what = proposal.kind === 'guess' ? `guess "${proposal.payload.word}"` : 'end the turn';
-          voteInstructions = `${proposer} wants to ${what}. You MUST vote NOW.\nIf you keep debating instead of voting, your team can lose the turn.\naction: {"type":"vote","proposalId":"${proposal.id}","decision":"accept"|"reject"}`;
+          voteInstructions = `${proposer} wants to ${what}. You MUST vote NOW.\nONLY valid action now: {"type":"vote","proposalId":"${proposal.id}","decision":"accept"|"reject"}\nIf you keep debating instead of voting, your team can lose the turn.`;
         }
       }
 
@@ -153,11 +162,18 @@ export class LlmClient {
       roleInstructions = [
         `Hint: "${game.turn.hintWord}" (${game.turn.hintCount}) — ${game.turn.guessesMade}/${game.turn.maxGuesses} guesses used.`,
         `Valid guesses: ${unrevealed.join(', ')}`,
+        'Important: board words have no spatial positions. Do not use "close to", "near", "next to", or adjacency arguments.',
+        'Judge guesses only by semantic relation to the hint and game risk (enemy/assassin), not board layout.',
         '',
         voteInstructions || proposalExamples,
       ].join('\n');
     } else {
-      roleInstructions = 'Waiting for the hint. Chat with your team.';
+      roleInstructions = [
+        'Waiting for your spymaster hint.',
+        'Do not guess, propose, or vote yet.',
+        'You can only chat briefly with teammates.',
+        'action: {"type":"none"}',
+      ].join('\n');
     }
 
     const personality = player.personality ?? 'You are a chill but competitive teammate.';
@@ -176,6 +192,7 @@ export class LlmClient {
       'CONVERSATION RULES (follow strictly):',
       '- PRIMARY GOAL: win the game, not roleplay the personality.',
       '- Personality is flavor only. Be flexible and compromise when needed to keep team momentum.',
+      '- Codenames has no board adjacency mechanics: never justify decisions with "near/close/next to" claims.',
       '- You MUST directly respond to or reference what the previous speaker said before adding your own thoughts.',
       '- If you agree, say so briefly ("yeah", "totally", "good call"). If you disagree, explain why in one sentence.',
       '- Do NOT repeat information that was just stated by someone else.',
@@ -223,11 +240,17 @@ export class LlmClient {
       chatMessages.unshift({ role: 'user', content: '[conversation start]' });
     }
 
+    const revealedCards = game.cards.filter((c) => c.revealed).map((c) => `[${c.word} → ${c.owner}]`).join(', ');
+    const boardContext = isBanterPhase
+      ? `Revealed cards: ${revealedCards || 'none yet'}`
+      : `Board: ${visibleCards}`;
+
     const stateContext = [
       lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}"` : '',
       `[GAME STATE] Team: ${team} | Your role: ${player.role} | Turn: ${game.turn.activeTeam}/${game.turn.phase}`,
+      isBanterPhase ? `[BANTER STATE] Previous team: ${game.turn.previousTeam ?? 'unknown'} | Next team: ${game.turn.activeTeam}` : '',
       `Score: Red ${remainingRed} left, Blue ${remainingBlue} left`,
-      `Board: ${visibleCards}`,
+      boardContext,
       `Pending proposals:\n${proposalLines}`,
       'Now it\'s your turn to respond. Return JSON with "message" and "action".',
     ].filter(Boolean).join('\n');

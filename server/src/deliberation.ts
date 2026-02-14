@@ -195,7 +195,7 @@ async function runOnePlayer(
 
       // Failure escalation
       const ts = getTeamState(gameId, team);
-      if (ts.failures >= 3 && player.role === 'operative') {
+      if (game.turn.phase === 'guess' && ts.failures >= 3 && player.role === 'operative') {
         const available = game.cards.filter((c) => !c.revealed).map((c) => c.word);
         extraHistory = [...extraHistory, {
           name: 'System',
@@ -211,6 +211,25 @@ async function runOnePlayer(
 
       const action = response.action;
       logInfo('runOnePlayer', `LLM response received`, { gameId, team, playerId, actionType: action.type });
+      const mustVoteProposal = game.turn.phase === 'guess' && player.role === 'operative'
+        ? pending.find((p) => p.createdBy !== playerId)
+        : undefined;
+      if (mustVoteProposal) {
+        if (action.type !== 'vote') {
+          logWarn('runOnePlayer', `Expected vote but got non-vote action`, {
+            gameId, team, playerId, actionType: action.type, proposalId: mustVoteProposal.id,
+          });
+          ts.failures++;
+          return false;
+        }
+        if (action.proposalId !== mustVoteProposal.id) {
+          logWarn('runOnePlayer', `Expected vote on pending proposal`, {
+            gameId, team, playerId, expectedProposalId: mustVoteProposal.id, gotProposalId: action.proposalId,
+          });
+          ts.failures++;
+          return false;
+        }
+      }
 
       // Validate hint
       if (action.type === 'hint' && boardWords.includes(action.word.toLowerCase())) {
@@ -480,10 +499,6 @@ async function runSpymasterHint(gameId: string, team: TeamColor): Promise<boolea
     logInfo('runSpymasterHint', `Skipped - no LLM spymaster`, { gameId, team });
     return true;
   }
-
-  // D1: Post a brief "thinking" message before the actual hint
-  postChatMessage(gameId, team, spymaster.id, '🤔 Hmm, let me think about this...');
-  await waitForTtsAck(gameId);
 
   const success = await runOnePlayer(gameId, team, spymaster.id);
   if (!success) {
