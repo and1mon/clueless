@@ -3,6 +3,7 @@ import {
   endBanter,
   forfeitTurn,
   getGame,
+  getHumanPlayer,
   getSpymaster,
   getTeamLlmPlayers,
   hasHumanPlayer,
@@ -463,6 +464,18 @@ async function runConversationRound(
         const stillPending = check.proposals[team].find((p) => p.id === proposal.id && p.status === 'pending');
         if (!stillPending || check.winner) {
           logInfo('runConversationRound', `Proposal no longer pending or game ended`, { gameId, team, proposalId: proposal.id });
+          // The voter whose vote resolved the proposal only voted — let them speak next round
+          if (!check.winner && check.turn.activeTeam === team && check.turn.phase === 'guess') {
+            spokePlayers.delete(voter.id);
+            const human = getHumanPlayer(check, team);
+            if (human && human.role === 'operative') {
+              logInfo('runConversationRound', `Pausing after proposal resolved for human`, { gameId, team, proposalId: proposal.id });
+              setHumanPaused(gameId, team, true);
+              return true;
+            }
+            logInfo('runConversationRound', `Proposal resolved, ending round — voters get fresh turn`, { gameId, team, proposalId: proposal.id });
+            return true;
+          }
           break;
         }
         logInfo('runConversationRound', `Voter speaking`, { gameId, team, voterId: voter.id, voterName: voter.name });
@@ -473,6 +486,18 @@ async function runConversationRound(
         logInfo('runConversationRound', `TTS ack received (voter)`, { gameId, team, voterId: voter.id });
         if (getGame(gameId).humanPaused[team]) {
           logInfo('runConversationRound', `Pausing round - human pressed hold after vote`, { gameId, team, voterId: voter.id });
+          return true;
+        }
+      }
+
+      // If proposal is still pending and a human operative needs to vote, pause for them
+      const afterVotes = getGame(gameId);
+      const stillPendingForHuman = afterVotes.proposals[team].find((p) => p.id === proposal.id && p.status === 'pending');
+      if (stillPendingForHuman) {
+        const human = getHumanPlayer(afterVotes, team);
+        if (human && human.role === 'operative' && !stillPendingForHuman.votes[human.id]) {
+          logInfo('runConversationRound', `Pausing for human vote`, { gameId, team, proposalId: proposal.id, humanId: human.id });
+          setHumanPaused(gameId, team, true);
           return true;
         }
       }

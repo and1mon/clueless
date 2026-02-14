@@ -672,6 +672,18 @@ body {
   gap: 0.5rem;
 }
 
+.action-prompt {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--accent);
+  padding: 0.25rem 0;
+  animation: pulse-prompt 2s ease-in-out infinite;
+}
+@keyframes pulse-prompt {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .action-row {
   display: flex;
   gap: 0.5rem;
@@ -1102,6 +1114,11 @@ button.reject { background: var(--red); color: #fff; }
 .chat-input.paused {
   border-top: 2px solid var(--primary);
   background: var(--primary-bg);
+}
+
+.chat-input.with-guess input.guess-input {
+  max-width: 11rem;
+  flex: 0 1 auto;
 }
 
 @media (max-width: 900px) {

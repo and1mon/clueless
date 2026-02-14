@@ -189,7 +189,12 @@ app.post('/api/games/:gameId/proposals/:proposalId/vote', (req, res) => {
     }
     const game = voteOnProposal(req.params.gameId, team, req.body.playerId, req.params.proposalId, req.body.decision);
     res.json(serializeGame(game));
-    afterHumanAction(game.id, team);
+    // After voting, stay paused so the human can act next (propose, chat, or resume LLMs)
+    if (!game.winner && game.turn.activeTeam === team && game.turn.phase === 'guess') {
+      setHumanPaused(game.id, team, true);
+    } else {
+      afterHumanAction(game.id, team);
+    }
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }

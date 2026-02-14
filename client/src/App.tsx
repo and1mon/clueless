@@ -111,15 +111,15 @@ export function App(): JSX.Element {
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
     humanRole: 'spectator' as PlayerRole | 'spectator',
-    teamSize: 4,
+    teamSize: 3,
     baseUrl: '',
     model: '',
     redModel: '',
     blueModel: '',
     neutralLlmMode: true,
     apiKey: '',
-    redPlayers: defaultLlmPlayers('red', 4),
-    bluePlayers: defaultLlmPlayers('blue', 4),
+    redPlayers: defaultLlmPlayers('red', 3),
+    bluePlayers: defaultLlmPlayers('blue', 3),
   });
 
   const isSpectator = setup.humanRole === 'spectator';
@@ -614,6 +614,15 @@ export function App(): JSX.Element {
     const w = word ?? guessWord;
     if (!w.trim()) return;
     try {
+      // Send chat message first if provided
+      if (message.trim()) {
+        const chatNext = await apiRequest<GameState>(`/api/games/${game.id}/chat`, {
+          method: 'POST',
+          body: JSON.stringify({ team: myTeam, playerId: humanPlayer.id, content: message }),
+        });
+        apply(chatNext);
+        setMessage('');
+      }
       const next = await apiRequest<GameState>(`/api/games/${game.id}/proposals`, {
         method: 'POST',
         body: JSON.stringify({ team: myTeam, playerId: humanPlayer.id, kind: 'guess', payload: { word: w } }),
@@ -626,6 +635,15 @@ export function App(): JSX.Element {
   const proposeEndTurn = async (): Promise<void> => {
     if (!game || !humanPlayer) return;
     try {
+      // Send chat message first if provided
+      if (message.trim()) {
+        const chatNext = await apiRequest<GameState>(`/api/games/${game.id}/chat`, {
+          method: 'POST',
+          body: JSON.stringify({ team: myTeam, playerId: humanPlayer.id, content: message }),
+        });
+        apply(chatNext);
+        setMessage('');
+      }
       const next = await apiRequest<GameState>(`/api/games/${game.id}/proposals`, {
         method: 'POST',
         body: JSON.stringify({ team: myTeam, playerId: humanPlayer.id, kind: 'end_turn', payload: {} }),
@@ -963,19 +981,22 @@ export function App(): JSX.Element {
           {canAct ? (
             <div className="actions">
               {isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? (
-                <div className="action-row">
-                  <input placeholder="Hint word" value={hintWord} onChange={(e) => setHintWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendHint(); }} />
-                  <input type="number" min={1} value={hintCount} onChange={(e) => setHintCount(e.target.value)} className="count-input" />
-                  <button onClick={sendHint}>Give Hint</button>
-                </div>
+                <>
+                  <div className="action-prompt">🎯 Your turn — give your team a hint!</div>
+                  <div className="action-row">
+                    <input placeholder="Hint word" value={hintWord} onChange={(e) => setHintWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendHint(); }} />
+                    <input type="number" min={1} value={hintCount} onChange={(e) => setHintCount(e.target.value)} className="count-input" />
+                    <button onClick={sendHint}>Give Hint</button>
+                  </div>
+                </>
               ) : null}
 
               {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && !hasPendingProposal ? (
-                <div className="action-row">
-                  <input placeholder="Guess a word (or click the board)" value={guessWord} onChange={(e) => setGuessWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') proposeGuess(); }} />
-                  <button onClick={() => proposeGuess()}>Propose</button>
-                  <button onClick={proposeEndTurn} className="secondary">End Turn</button>
-                </div>
+                <div className="action-prompt">🎯 Your turn — pick a word or end the turn!</div>
+              ) : null}
+
+              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && hasPendingProposal ? (
+                <div className="action-prompt">🗳️ Vote on the proposal below!</div>
               ) : null}
 
               {pendingProposals.map((p) => {
@@ -1092,7 +1113,7 @@ export function App(): JSX.Element {
 
           {/* Chat input — only when playing */}
           {!isSpectator ? (
-            <div className={`chat-input${isPaused ? ' paused' : ''}`}>
+            <div className={`chat-input${isPaused ? ' paused' : ''}${isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? ' with-guess' : ''}`}>
               <input
                 placeholder={chatPlaceholder}
                 value={message}
@@ -1100,7 +1121,21 @@ export function App(): JSX.Element {
                 onKeyDown={(e) => { if (e.key === 'Enter' && !chatDisabled) sendChat(); }}
                 disabled={chatDisabled}
               />
-              <button onClick={sendChat} disabled={chatDisabled}>Send</button>
+              {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? (
+                <>
+                  <input
+                    className="guess-input"
+                    placeholder="Guess word (or click board)"
+                    value={guessWord}
+                    onChange={(e) => setGuessWord(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') proposeGuess(); }}
+                  />
+                  <button onClick={() => proposeGuess()} title="Propose guess">Propose</button>
+                  <button onClick={proposeEndTurn} className="secondary" title="End your turn">End Turn</button>
+                </>
+              ) : (
+                <button onClick={sendChat} disabled={chatDisabled}>Send</button>
+              )}
               {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' ? (
                 isPaused
                   ? <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
