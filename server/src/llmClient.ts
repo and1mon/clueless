@@ -176,6 +176,7 @@ function buildSituation(input: {
 
   if (game.turn.phase === 'banter') {
     lines.push(`Previous team: ${game.turn.previousTeam ?? 'unknown'}, next team: ${game.turn.activeTeam}`);
+    lines.push('Banter phase: React to what just happened. Celebrate your team\'s reveals, trash-talk the other team. No strategy or hint discussion — just banter.');
   }
 
   // -- Hint phase: spymaster target/avoid lists --

@@ -276,7 +276,7 @@ export function submitHint(gameId: string, team: TeamColor, playerId: string, wo
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = count + 1;
 
-  addSystemMessage(game, team, `🔎 Spymaster says: "${hintWord}" (${count})`);
+  addSystemMessage(game, team, `Spymaster says: "${hintWord}" (${count})`);
   return game;
 }
 
@@ -311,7 +311,7 @@ export function endBanter(gameId: string): GameState {
 function finishGame(game: GameState, winner: TeamColor, reason: string): void {
   game.winner = winner;
   game.loserReason = reason;
-  addSystemMessage(game, winner, `🏁 Game over — ${winner} wins! (${reason})`);
+  addSystemMessage(game, winner, `Game over — ${winner} wins! (${reason})`);
 }
 
 function resolveGuess(game: GameState, team: TeamColor, guessWord: string): void {
@@ -451,7 +451,8 @@ export function voteOnProposal(
       addSystemMessage(game, team, 'Team decided to end their turn.');
       switchTurn(game);
     }
-  } else if (rejects >= threshold) {
+  } else if (rejects > voterCount / 2) {
+    // Reject requires a strict majority — more than half must explicitly reject
     proposal.status = 'rejected';
     proposal.resolvedAt = nowIso();
     addSystemMessage(game, team, 'Proposal rejected — keep discussing.');
@@ -477,7 +478,7 @@ export function setLlmError(gameId: string, message: string): void {
 
 export function forfeitTurn(gameId: string, team: TeamColor, reason: string): GameState {
   const game = getGame(gameId);
-  addSystemMessage(game, team, `⚠️ ${reason}`);
+  addSystemMessage(game, team, `${reason}`);
   switchTurn(game);
   return game;
 }

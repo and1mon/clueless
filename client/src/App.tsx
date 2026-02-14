@@ -59,6 +59,25 @@ function parseMarkdown(text: string): string {
   return marked.parseInline(text) as string;
 }
 
+// Convert system message display text into natural speech for TTS
+function systemTextToSpeech(text: string): string {
+  const revealed = text.match(/^Revealed "(.+?)" → (.+)$/);
+  if (revealed) return `${revealed[1]} was revealed. It belongs to ${revealed[2]}.`;
+  const hint = text.match(/^Spymaster says: "(.+?)" \((\d+)\)$/);
+  if (hint) return `The spymaster's hint is ${hint[1]}, for ${hint[2]}.`;
+  const gameOver = text.match(/^Game over — (\w+) wins! \((.+)\)$/);
+  if (gameOver) return `Game over! ${gameOver[1]} team wins. ${gameOver[2]}.`;
+  const turnSwitch = text.match(/^It's now (\w+)'s turn\.$/);
+  if (turnSwitch) return `It's now ${turnSwitch[1]} team's turn.`;
+  const proposeGuess = text.match(/^(.+) proposes guessing "(.+)"$/);
+  if (proposeGuess) return `${proposeGuess[1]} proposes guessing ${proposeGuess[2]}.`;
+  const alsoGuess = text.match(/^(.+) also wants to guess "(.+)"$/);
+  if (alsoGuess) return `${alsoGuess[1]} also wants to guess ${alsoGuess[2]}.`;
+  const voted = text.match(/^(.+) voted (accept|reject)$/);
+  if (voted) return `${voted[1]} voted to ${voted[2]}.`;
+  return text.replace(/"/g, '');
+}
+
 export function App(): JSX.Element {
   const [game, setGameRaw] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
@@ -258,7 +277,7 @@ export function App(): JSX.Element {
 
     while (displayUpTo.current < log.length) {
       const msg = log[displayUpTo.current];
-      if (msg.kind !== 'chat' || msg.content === '...') {
+      if (msg.content === '...') {
         displayUpTo.current++;
         setDisplayVersion((v) => v + 1);
         continue;
@@ -317,7 +336,7 @@ export function App(): JSX.Element {
     }
     for (let i = ttsStartIdx.current; i < log.length; i++) {
       const msg = log[i];
-      if (msg.kind !== 'chat' || msg.content === '...') {
+      if (msg.content === '...') {
         ttsStartIdx.current = i + 1;
         continue;
       }
@@ -326,10 +345,12 @@ export function App(): JSX.Element {
         continue;
       }
       const player = game.players[msg.playerId];
-      const voice = player?.voice || 'af_heart';
+      const isAction = msg.kind !== 'chat';
+      const voice = isAction ? 'bf_emma' : (player?.voice || 'af_heart');
+      const content = isAction ? systemTextToSpeech(msg.content) : msg.content;
       ttsGenerating.current.add(msg.id);
       // A4: Enqueue instead of firing all in parallel
-      ttsQueue.current.push({ msgId: msg.id, content: msg.content, voice });
+      ttsQueue.current.push({ msgId: msg.id, content, voice });
       ttsStartIdx.current = i + 1;
     }
     // A4: Kick the queue processor
@@ -829,7 +850,7 @@ export function App(): JSX.Element {
               <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
             </div>
             {boardGame.winner ? (
-              <div className="game-status winner-banner">🏆 {boardGame.winner} wins!</div>
+              <div className="game-status winner-banner">{boardGame.winner} wins!</div>
             ) : turn.phase === 'banter' ? (
               <div className="game-status">
                 <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>

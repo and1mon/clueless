@@ -334,7 +334,7 @@ async function runOnePlayer(
             const errMsg = propErr instanceof Error ? propErr.message : String(propErr);
             logWarn('runOnePlayer', `Proposal failed`, { gameId, team, playerId, word: action.word, error: errMsg });
             if (errMsg.includes('not on the board') || errMsg.includes('already been revealed') || errMsg.includes('already a pending proposal')) {
-              postChatMessage(gameId, team, player.id, `❌ Cannot guess "${action.word}" — ${errMsg}`);
+              postChatMessage(gameId, team, player.id, `${player.name} tried to guess "${action.word}" but ${errMsg}`);
               ts.failures++;
               return false;
             }
