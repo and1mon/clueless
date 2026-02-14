@@ -211,7 +211,7 @@ function buildSituation(input: {
     lines.push(`Your team's words (target these): ${myWords.join(', ')}`);
     lines.push(`Enemy words (AVOID — guessing these helps the enemy): ${enemyWords.join(', ')}`);
     lines.push(`Assassin (AVOID — guessing this means instant loss): ${assassinWords.join(', ')}`);
-    lines.push(`Your hint must be a SINGLE word that is NOT any word on the board: ${allBoardWords.join(', ')}`);
+    lines.push(`Your hint must be a SINGLE word (or a well-known compound like "spaceship" or "sunflower") that is NOT any word on the board: ${allBoardWords.join(', ')}`);
     const neutralWords = game.cards.filter((c) => c.owner === 'neutral' && !c.revealed).map((c) => c.word);
     lines.push(`Neutral words (guessing these wastes your turn): ${neutralWords.join(', ')}`);
     lines.push(`HINT STRATEGY: First, brainstorm a hint that connects 2-3 of YOUR team's words. Then CROSS-CHECK: does this hint also relate to any enemy word, assassin word, or neutral word? If yes, DISCARD it and pick a safer hint. For example "fire" is bad if the enemy has "phoenix". A safe 2-word hint beats a risky 3-word hint. Set count = only the words your hint truly fits.`);
