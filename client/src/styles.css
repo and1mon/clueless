@@ -1094,6 +1094,16 @@ button.reject { background: var(--red); color: #fff; }
   box-shadow: 0 0 0 3px var(--primary-bg);
 }
 
+.chat-input input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-input.paused {
+  border-top: 2px solid var(--primary);
+  background: var(--primary-bg);
+}
+
 @media (max-width: 900px) {
   .game-layout {
     grid-template-columns: 1fr;

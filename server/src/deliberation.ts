@@ -6,11 +6,10 @@ import {
   getSpymaster,
   getTeamLlmPlayers,
   hasHumanPlayer,
-  isAbandoned,
   otherTeam,
   postChatMessage,
-  setAwaitingHumanContinuation,
   setDeliberating,
+  setHumanPaused,
   setLlmError,
   submitHint,
   voteOnProposal,
@@ -46,6 +45,7 @@ function logError(context: string, message: string, error?: unknown, data?: Reco
 // ---------------------------------------------------------------------------
 interface TeamTurnState {
   locked: boolean;
+  operativeLoopRunning: boolean;
   failures: number;
   proposedWords: Set<string>;
   lastSpeakerId?: string;
@@ -61,7 +61,7 @@ function getTeamState(gameId: string, team: TeamColor): TeamTurnState {
   const key = stateKey(gameId, team);
   let s = teamStates.get(key);
   if (!s) {
-    s = { locked: false, failures: 0, proposedWords: new Set() };
+    s = { locked: false, operativeLoopRunning: false, failures: 0, proposedWords: new Set() };
     teamStates.set(key, s);
   }
   return s;
@@ -88,6 +88,7 @@ function resetTurnCounters(gameId: string, team: TeamColor): void {
   s.failures = 0;
   s.proposedWords.clear();
   s.lastSpeakerId = undefined;
+  s.operativeLoopRunning = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +117,27 @@ function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+// Suppress messages that are too similar to recent chat from the same team
+function isTooSimilar(game: import('./types.js').GameState, team: import('./types.js').TeamColor, message: string): boolean {
+  const words = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 3));
+  const msgWords = words(message);
+  if (msgWords.size < 3) return false; // too short to compare
+  const recent = game.chatLog.filter(m => m.team === team && m.playerId !== 'system').slice(-6);
+  for (const m of recent) {
+    const otherWords = words(m.content);
+    if (otherWords.size < 3) continue;
+    const overlap = [...msgWords].filter(w => otherWords.has(w)).length;
+    const similarity = overlap / Math.min(msgWords.size, otherWords.size);
+    if (similarity > 0.7) {
+      logWarn('isTooSimilar', `Suppressed duplicate message`, { team, similarity: similarity.toFixed(2), message: message.slice(0, 80) });
+      return true;
+    }
+  }
+  return false;
+}
+
 function isGameOver(gameId: string): boolean {
-  return !!getGame(gameId).winner || isAbandoned(gameId);
+  return !!getGame(gameId).winner;
 }
 
 function isStillActiveTeam(gameId: string, team: TeamColor): boolean {
@@ -315,18 +335,9 @@ async function runOnePlayer(
               ? fallbackChatForAction(action)
               : '...');
 
-        if (chatMessage !== '...') {
+        if (chatMessage !== '...' && !isTooSimilar(game, team, chatMessage)) {
           postChatMessage(gameId, team, player.id, chatMessage);
           getTeamState(gameId, team).lastSpeakerId = player.id;
-          if (
-            game.turn.phase === 'guess'
-            && game.turn.activeTeam === team
-            && player.role === 'operative'
-            && hasHumanPlayer(game, team)
-          ) {
-            setAwaitingHumanContinuation(gameId, team, true);
-            logInfo('runOnePlayer', `Waiting for human continuation`, { gameId, team, playerId });
-          }
         }
 
         if (action.type === 'propose_guess') {
@@ -372,10 +383,13 @@ async function runOnePlayer(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logError('runOnePlayer', `LLM call failed`, err, { gameId, team, playerId, playerName: player.name, attempt });
-      if (/fetch|ECONNREFUSED|failed|40[134]/i.test(msg)) {
+      // Only flag persistent config errors (auth failures) — transient errors retry silently
+      if (/40[13]/.test(msg)) {
         setLlmError(gameId, `LLM error (${player.name}): ${msg}`);
+        return false;
       }
-      return false;
+      // Transient errors (network, JSON parse, 5xx) — retry on next attempt
+      continue;
     }
   }
 
@@ -429,8 +443,8 @@ async function runConversationRound(
     logInfo('runConversationRound', `Waiting for TTS ack`, { gameId, team, playerId: player.id });
     await waitForTtsAck(gameId);
     logInfo('runConversationRound', `TTS ack received`, { gameId, team, playerId: player.id });
-    if (getGame(gameId).awaitingHumanContinuation[team]) {
-      logInfo('runConversationRound', `Pausing round for human continuation`, { gameId, team, playerId: player.id });
+    if (getGame(gameId).humanPaused[team]) {
+      logInfo('runConversationRound', `Pausing round - human pressed hold`, { gameId, team, playerId: player.id });
       return true;
     }
 
@@ -441,7 +455,8 @@ async function runConversationRound(
       const proposal = pendingNow[0];
       logInfo('runConversationRound', `Pending proposal found, collecting votes`, { gameId, team, proposalId: proposal.id });
       const voters = speakers.filter(
-        (p) => p.id !== proposal.createdBy && !proposal.votes[p.id] && !spokePlayers.has(p.id),
+        (p) => p.id !== proposal.createdBy && !proposal.votes[p.id]
+          && !(p.role === 'spymaster' && current.turn.phase === 'guess'),
       );
       for (const voter of voters) {
         const check = getGame(gameId);
@@ -456,8 +471,8 @@ async function runConversationRound(
         logInfo('runConversationRound', `Waiting for TTS ack (voter)`, { gameId, team, voterId: voter.id });
         await waitForTtsAck(gameId);
         logInfo('runConversationRound', `TTS ack received (voter)`, { gameId, team, voterId: voter.id });
-        if (getGame(gameId).awaitingHumanContinuation[team]) {
-          logInfo('runConversationRound', `Pausing round for human continuation after vote`, { gameId, team, voterId: voter.id });
+        if (getGame(gameId).humanPaused[team]) {
+          logInfo('runConversationRound', `Pausing round - human pressed hold after vote`, { gameId, team, voterId: voter.id });
           return true;
         }
       }
@@ -532,6 +547,8 @@ export async function runBanterRound(gameId: string): Promise<void> {
     { team: outgoingTeam, players: outOps },
   ];
 
+  const lastBanterSpeaker: Record<TeamColor, string | undefined> = { red: undefined, blue: undefined };
+
   for (let i = 0; i < exchanges.length; i++) {
     const { team: t, players } = exchanges[i];
     if (players.length === 0) {
@@ -544,7 +561,12 @@ export async function runBanterRound(gameId: string): Promise<void> {
       break;
     }
 
-    const speaker = pickRandom(players);
+    // Avoid same speaker twice for this team
+    const candidates = players.length > 1 && lastBanterSpeaker[t]
+      ? players.filter((p) => p.id !== lastBanterSpeaker[t])
+      : players;
+    const speaker = pickRandom(candidates.length > 0 ? candidates : players);
+    lastBanterSpeaker[t] = speaker.id;
     logInfo('runBanterRound', `Banter exchange`, { gameId, team: t, speakerId: speaker.id, speakerName: speaker.name, exchangeIndex: i });
     setDeliberating(gameId, t, true);
     try {
@@ -610,6 +632,64 @@ export async function runTeammateRound(gameId: string, team: TeamColor): Promise
 }
 
 // ---------------------------------------------------------------------------
+// Operative discussion loop — runs conversation rounds until turn ends
+// ---------------------------------------------------------------------------
+export async function runOperativeLoop(gameId: string, team: TeamColor): Promise<void> {
+  const ts = getTeamState(gameId, team);
+  if (ts.operativeLoopRunning) {
+    logInfo('runOperativeLoop', `Skipped - loop already running`, { gameId, team });
+    return;
+  }
+  ts.operativeLoopRunning = true;
+  logInfo('runOperativeLoop', `Starting operative discussion loop`, { gameId, team });
+  const maxRounds = 20;
+  let round = 0;
+  let staleRounds = 0;
+  
+  while (round < maxRounds) {
+    const current = getGame(gameId);
+    if (current.winner || current.turn.activeTeam !== team || current.turn.phase !== 'guess') {
+      logInfo('runOperativeLoop', `Exiting - conditions changed`, { 
+        gameId, team, round, winner: current.winner, activeTeam: current.turn.activeTeam, phase: current.turn.phase 
+      });
+      break;
+    }
+    if (current.humanPaused[team]) {
+      logInfo('runOperativeLoop', `Exiting - human paused`, { gameId, team, round });
+      break;
+    }
+    
+    const guessesBefore = current.turn.guessesMade;
+    logInfo('runOperativeLoop', `Running teammate round`, { gameId, team, round, staleRounds, guessesBefore });
+    await runTeammateRound(gameId, team);
+    
+    const after = getGame(gameId);
+    const madeProgress = after.turn.guessesMade > guessesBefore || after.turn.phase !== 'guess' || after.turn.activeTeam !== team;
+    staleRounds = madeProgress ? 0 : staleRounds + 1;
+    
+    logInfo('runOperativeLoop', `Teammate round completed`, { 
+      gameId, team, round, madeProgress, staleRounds, guessesMade: after.turn.guessesMade 
+    });
+    
+    if (staleRounds >= 10) {
+      logError('runOperativeLoop', `Too many stale rounds, forfeiting`, undefined, { gameId, team, staleRounds });
+      forfeitTurn(gameId, team, `Team ${team} couldn't make progress. Turn forfeited.`);
+      break;
+    }
+    
+    round++;
+  }
+  
+  if (round >= maxRounds && isStillActiveTeam(gameId, team)) {
+    logError('runOperativeLoop', `Ran out of rounds, forfeiting`, undefined, { gameId, team, round, maxRounds });
+    forfeitTurn(gameId, team, `Team ${team} took too long deliberating. Turn forfeited.`);
+  }
+  
+  ts.operativeLoopRunning = false;
+  logInfo('runOperativeLoop', `Operative loop completed`, { gameId, team, totalRounds: round });
+}
+
+// ---------------------------------------------------------------------------
 // Auto spymaster hint + operative discussion
 // ---------------------------------------------------------------------------
 export async function autoSpymasterHint(gameId: string, team: TeamColor): Promise<void> {
@@ -642,47 +722,8 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
     releaseLock(gameId, team);
   }
 
-  // After hint, kick off operative discussion - loop until turn ends or team switches
-  const maxRounds = 20;
-  let round = 0;
-  let staleRounds = 0;
-  
-  while (round < maxRounds) {
-    const current = getGame(gameId);
-    if (current.winner || current.turn.activeTeam !== team || current.turn.phase !== 'guess') {
-      logInfo('autoSpymasterHint', `Exiting operative loop - conditions changed`, { 
-        gameId, team, round, winner: current.winner, activeTeam: current.turn.activeTeam, phase: current.turn.phase 
-      });
-      break;
-    }
-    
-    const guessesBefore = current.turn.guessesMade;
-    logInfo('autoSpymasterHint', `Running teammate round`, { gameId, team, round, staleRounds, guessesBefore });
-    await runTeammateRound(gameId, team);
-    
-    const after = getGame(gameId);
-    const madeProgress = after.turn.guessesMade > guessesBefore || after.turn.phase !== 'guess' || after.turn.activeTeam !== team;
-    staleRounds = madeProgress ? 0 : staleRounds + 1;
-    
-    logInfo('autoSpymasterHint', `Teammate round completed`, { 
-      gameId, team, round, madeProgress, staleRounds, guessesMade: after.turn.guessesMade 
-    });
-    
-    if (staleRounds >= 10) {
-      logError('autoSpymasterHint', `Too many stale rounds, forfeiting`, undefined, { gameId, team, staleRounds });
-      forfeitTurn(gameId, team, `Team ${team} couldn't make progress. Turn forfeited.`);
-      break;
-    }
-    
-    round++;
-  }
-  
-  if (round >= maxRounds && isStillActiveTeam(gameId, team)) {
-    logError('autoSpymasterHint', `Ran out of rounds, forfeiting`, undefined, { gameId, team, round, maxRounds });
-    forfeitTurn(gameId, team, `Team ${team} took too long deliberating. Turn forfeited.`);
-  }
-  
-  logInfo('autoSpymasterHint', `Auto spymaster hint completed`, { gameId, team, totalRounds: round });
+  await runOperativeLoop(gameId, team);
+  logInfo('autoSpymasterHint', `Auto spymaster hint completed`, { gameId, team });
 }
 
 // ---------------------------------------------------------------------------

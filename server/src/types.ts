@@ -82,7 +82,7 @@ export interface GameState {
   llmConfig: LlmConfig;
   llmNeutralMode: boolean;
   deliberating: Record<TeamColor, boolean>;
-  awaitingHumanContinuation: Record<TeamColor, boolean>;
+  humanPaused: Record<TeamColor, boolean>;
   llmError?: string;
   gameOverBanter?: boolean;
 }

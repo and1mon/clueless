@@ -22,7 +22,7 @@ export function touchGame(gameId: string): void {
 export function isAbandoned(gameId: string): boolean {
   const last = lastClientPoll.get(gameId);
   if (!last) return false; // never polled = just created
-  return Date.now() - last > 15_000; // 15s ≈ 10 missed polls
+  return Date.now() - last > 60_000; // 60s without any client activity
 }
 
 const VOICE_POOL = [
@@ -87,6 +87,12 @@ function createPlayers(input: CreateGameInput): {
     [humanTeam]: input.llmPlayers?.[humanTeam] ?? (isSpectator ? 3 : 2),
     [enemyTeam]: input.llmPlayers?.[enemyTeam] ?? 3,
   };
+
+  // Enforce matching team sizes when human is playing
+  if (!isSpectator && !input.llmPlayers?.[enemyTeam]) {
+    const humanTeamTotal = llmPerTeam[humanTeam] + 1; // +1 for human
+    llmPerTeam[enemyTeam] = humanTeamTotal;
+  }
 
   const players: Record<string, Player> = {};
   const teams: GameState['teams'] = {
@@ -198,7 +204,7 @@ export function createGame(input: CreateGameInput): GameState {
     },
     llmNeutralMode: !!input.llmNeutralMode,
     deliberating: { red: false, blue: false },
-    awaitingHumanContinuation: { red: false, blue: false },
+    humanPaused: { red: false, blue: false },
   };
 
   games.set(id, game);
@@ -263,6 +269,20 @@ export function postChatMessage(gameId: string, team: TeamColor, playerId: strin
   const game = getGame(gameId);
   assertTeamMember(game, team, playerId);
   if (!content.trim()) throw new Error('Message cannot be empty.');
+
+  const player = game.players[playerId];
+
+  // Human players cannot chat during the enemy team's turn (except banter/game over)
+  if (player.type === 'human' && game.turn.activeTeam !== team && game.turn.phase !== 'banter' && !game.winner) {
+    throw new Error('You can only chat during your team\'s turn or during banter.');
+  }
+
+  // Spymasters stay quiet during guess phase (Codenames rule)
+  if (player.role === 'spymaster' && game.turn.activeTeam === team) {
+    if (game.turn.phase === 'hint') throw new Error('Use the hint action instead of chatting.');
+    if (game.turn.phase === 'guess') throw new Error('Spymasters must stay silent during the guess phase.');
+  }
+
   addMessage(game, team, playerId, content.trim(), 'chat');
   return game;
 }
@@ -305,8 +325,8 @@ function countRemaining(game: GameState, owner: TeamColor): number {
 function switchTurn(game: GameState): void {
   // activeTeam stays as-is (team that just played)
   game.turn.phase = 'banter';
-  game.awaitingHumanContinuation.red = false;
-  game.awaitingHumanContinuation.blue = false;
+  game.humanPaused.red = false;
+  game.humanPaused.blue = false;
   game.turn.hintWord = undefined;
   game.turn.hintCount = undefined;
   game.turn.hintTargets = undefined;
@@ -443,6 +463,9 @@ export function voteOnProposal(
   const game = getGame(gameId);
   assertTeamMember(game, team, playerId);
 
+  const player = game.players[playerId];
+  if (player.role === 'spymaster') throw new Error('Spymasters cannot vote on proposals.');
+
   const proposal = game.proposals[team].find((p) => p.id === proposalId);
   if (!proposal) throw new Error('Proposal not found.');
   if (proposal.status !== 'pending') throw new Error('Proposal already resolved.');
@@ -482,9 +505,9 @@ export function setDeliberating(gameId: string, team: TeamColor, value: boolean)
   game.deliberating[team] = value;
 }
 
-export function setAwaitingHumanContinuation(gameId: string, team: TeamColor, value: boolean): void {
+export function setHumanPaused(gameId: string, team: TeamColor, value: boolean): void {
   const game = getGame(gameId);
-  game.awaitingHumanContinuation[team] = value;
+  game.humanPaused[team] = value;
 }
 
 export function setLlmError(gameId: string, message: string): void {
@@ -513,6 +536,18 @@ export function getSpymaster(game: GameState, team: TeamColor): Player | undefin
   return game.teams[team].players
     .map((id) => game.players[id])
     .find((p) => p.role === 'spymaster');
+}
+
+export function hasHumanOperative(game: GameState, team: TeamColor): boolean {
+  return game.teams[team].players.some(
+    (id) => game.players[id].type === 'human' && game.players[id].role === 'operative',
+  );
+}
+
+export function getHumanPlayer(game: GameState, team: TeamColor): Player | undefined {
+  return game.teams[team].players
+    .map((id) => game.players[id])
+    .find((p) => p.type === 'human');
 }
 
 export function serializeGame(game: GameState): Omit<GameState, 'llmConfig'> & { llmConfig: { baseUrl: string; model: string } } {

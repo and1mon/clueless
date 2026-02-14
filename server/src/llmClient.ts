@@ -94,7 +94,18 @@ Action types:
 // Helpers
 // ---------------------------------------------------------------------------
 
-function buildSystemPrompt(player: Player, team: TeamColor, personality: string): string {
+function buildSystemPrompt(player: Player, team: TeamColor, personality: string, isBanter: boolean): string {
+  const comms = isBanter
+    ? `## Communication
+- 1-3 sentences. React with personality — don't narrate or summarize events.
+- NEVER repeat or paraphrase what a teammate just said. Say something NEW or stay silent.
+- Your message must use action {"type": "none"}.`
+    : `## Communication
+- 1-2 sentences. Say what you think and briefly why.
+- NEVER repeat or paraphrase what a teammate just said. Add a new perspective.
+- When discussing guesses, explain the connection to the hint.
+- Your message must match your action.`;
+
   return [
     `You are ${player.name}, playing Clueless on team ${team}. Role: ${player.role}.`,
     personality,
@@ -103,10 +114,7 @@ function buildSystemPrompt(player: Player, team: TeamColor, personality: string)
     '',
     ACTION_SCHEMA,
     '',
-    `## Communication
-- 1-2 sentences. Say what you think and briefly why.
-- When discussing guesses, explain the connection to the hint.
-- Your message must match your action.`,
+    comms,
   ].join('\n');
 }
 
@@ -114,12 +122,13 @@ function buildChatMessages(
   chatHistory: Array<{ name: string; content: string }>,
   playerName: string,
 ): Array<{ role: 'assistant' | 'user'; content: string }> {
+  const isMe = (name: string) => name === playerName || name.startsWith(`${playerName} [`);
   const raw = chatHistory
     .slice(-50)
     .filter((m) => m.content && m.content.trim())
     .map((m) => ({
-      role: (m.name === playerName ? 'assistant' : 'user') as 'assistant' | 'user',
-      content: m.name === playerName ? m.content : `${m.name}: ${m.content}`,
+      role: (isMe(m.name) ? 'assistant' : 'user') as 'assistant' | 'user',
+      content: isMe(m.name) ? m.content : `${m.name}: ${m.content}`,
     }));
 
   // Merge consecutive same-role messages
@@ -185,17 +194,17 @@ function buildSituation(input: {
     const nextTeam = game.turn.activeTeam === 'red' ? 'blue' : 'red';
     lines.push(`Team ${game.turn.activeTeam} just finished. Next up: ${nextTeam}`);
 
-    // Tell players who the spymaster was so they can react to hint quality
-    const outgoingTeam = game.turn.activeTeam;
-    const outgoingSm = Object.values(game.players).find(
-      (p) => p.team === outgoingTeam && p.role === 'spymaster',
-    );
-    if (outgoingSm) {
-      const smLabel = outgoingSm.team === team ? 'your spymaster' : `${outgoingTeam}'s spymaster`;
-      lines.push(`${outgoingSm.name} was ${smLabel} this turn.`);
+    // Build a concise summary of the turn from system messages
+    const turnEvents = game.chatLog
+      .filter((m) => m.playerId === 'system' && m.team === game.turn.activeTeam)
+      .filter((m) => m.content.startsWith('Spymaster says:') || m.content.startsWith('Revealed'))
+      .slice(-10)
+      .map((m) => m.content);
+    if (turnEvents.length > 0) {
+      lines.push(`What happened this turn: ${turnEvents.join(' → ')}`);
     }
 
-    const banterBase = 'Banter phase: React to what just happened — the hints given, the guesses made, how the spymaster did. Trash-talk opponents, hype or roast teammates. No strategy discussion or hints about unrevealed words.';
+    const banterBase = 'Banter phase: React with your personality — trash-talk, celebrate, commiserate, roast. Be yourself, don\'t summarize or narrate what happened. No strategy discussion or hints about unrevealed words.';
     const banterExtra = player.role === 'spymaster' ? ' NEVER reveal or hint at which words belong to which team.' : '';
     lines.push(banterBase + banterExtra);
   }
@@ -261,7 +270,8 @@ export class LlmClient {
       ? 'You are a neutral, cooperative Clueless teammate focused on clear strategy and winning.'
       : (player.personality ?? 'You are a chill but competitive teammate.');
 
-    const system = buildSystemPrompt(player, team, personality);
+    const isBanter = game.turn.phase === 'banter' || !!input.endGameBanter;
+    const system = buildSystemPrompt(player, team, personality, isBanter);
     const chatMessages = buildChatMessages(input.chatHistory, player.name);
     const situation = buildSituation(input);
 
@@ -276,32 +286,45 @@ export class LlmClient {
     if (this.config.apiKey) headers.Authorization = `Bearer ${this.config.apiKey}`;
 
     const url = `${this.config.baseUrl.replace(/\/$/, '')}/chat/completions`;
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: this.config.model,
-          temperature: 0.7,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: system },
-            ...chatMessages,
-          ],
-        }),
-      });
-    } catch (err) {
-      const cause = err instanceof Error ? err.cause ?? err.message : err;
-      throw new Error(`Fetch to ${url} failed: ${JSON.stringify(cause, null, 2)}`);
+    const body = JSON.stringify({
+      model: this.config.model,
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: system },
+        ...chatMessages,
+      ],
+    });
+
+    // Retry fetch with backoff for transient network errors and 5xx responses
+    let response: Response | undefined;
+    const maxFetchRetries = 3;
+    for (let fetchAttempt = 0; fetchAttempt < maxFetchRetries; fetchAttempt++) {
+      try {
+        response = await fetch(url, { method: 'POST', headers, body });
+      } catch (err) {
+        if (fetchAttempt < maxFetchRetries - 1) {
+          const delay = 1000 * (fetchAttempt + 1);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        const cause = err instanceof Error ? err.cause ?? err.message : err;
+        throw new Error(`Fetch to ${url} failed: ${JSON.stringify(cause, null, 2)}`);
+      }
+      if (response.status >= 500 && fetchAttempt < maxFetchRetries - 1) {
+        const delay = 1000 * (fetchAttempt + 1);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      break;
     }
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`LLM request failed (${response.status}): ${body.slice(0, 300)}`);
+    if (!response!.ok) {
+      const respBody = await response!.text();
+      throw new Error(`LLM request failed (${response!.status}): ${respBody.slice(0, 300)}`);
     }
 
-    const payload = (await response.json()) as {
+    const payload = (await response!.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
 

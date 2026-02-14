@@ -652,6 +652,21 @@ export function App(): JSX.Element {
     } catch { /* ignore */ }
   };
 
+  const pauseLlm = async (): Promise<void> => {
+    if (!game) return;
+    try {
+      const next = await apiRequest<GameState>(`/api/games/${game.id}/teams/${myTeam}/pause`, { method: 'POST', body: '{}' });
+      apply(next);
+    } catch { /* ignore */ }
+  };
+
+  const resumeLlm = async (): Promise<void> => {
+    if (!game) return;
+    try {
+      await apiRequest(`/api/games/${game.id}/teams/${myTeam}/resume`, { method: 'POST', body: '{}' });
+    } catch { /* ignore */ }
+  };
+
   // In TTS mode, derive a "display" game state that matches what the user has seen so far
   const displayGame = useMemo(() => {
     if (!game || !ttsEnabled) return game;
@@ -799,6 +814,17 @@ export function App(): JSX.Element {
   const showSpyView = isSpectator || isHumanSpymaster;
   const canAct = !isSpectator;
   const hasPendingProposal = pendingProposals.length > 0;
+
+  // Chat availability
+  const isBanter = turn.phase === 'banter';
+  const isEnemyTurn = !isSpectator && turn.activeTeam !== myTeam && !isBanter && !game.winner;
+  const isPaused = !isSpectator && !!game.humanPaused[myTeam];
+  const chatDisabled = isEnemyTurn || (isHumanSpymaster && turn.activeTeam === myTeam && turn.phase === 'guess');
+  const chatPlaceholder = isEnemyTurn
+    ? `${turn.activeTeam}'s turn — wait for yours…`
+    : (isHumanSpymaster && turn.phase === 'guess')
+      ? 'Spymasters stay quiet during guessing…'
+      : 'Talk to your team…';
 
   return (
     <main className="game-screen">
@@ -1066,15 +1092,22 @@ export function App(): JSX.Element {
 
           {/* Chat input — only when playing */}
           {!isSpectator ? (
-            <div className="chat-input">
+            <div className={`chat-input${isPaused ? ' paused' : ''}`}>
               <input
-                placeholder="Talk to your team…"
+                placeholder={chatPlaceholder}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !chatDisabled) sendChat(); }}
+                disabled={chatDisabled}
               />
-              <button onClick={sendChat}>Send</button>
-              <button onClick={nudgeLlm} className="secondary" title="Ask LLMs to respond">🤖</button>
+              <button onClick={sendChat} disabled={chatDisabled}>Send</button>
+              {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' ? (
+                isPaused
+                  ? <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
+                  : <button onClick={pauseLlm} className="secondary" title="Ask LLMs to hold on">✋</button>
+              ) : (
+                <button onClick={nudgeLlm} className="secondary" title="Ask LLMs to respond">🤖</button>
+              )}
             </div>
           ) : null}
         </section>

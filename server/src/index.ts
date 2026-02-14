@@ -8,12 +8,12 @@ import {
   isAbandoned,
   postChatMessage,
   serializeGame,
-  setAwaitingHumanContinuation,
+  setHumanPaused,
   submitHint,
   touchGame,
   voteOnProposal,
 } from './gameStore.js';
-import { runFullLlmTurn, runTeammateRound, autoSpymasterHint, runBanterRound, runEndGameBanter, fireAndForget } from './deliberation.js';
+import { runFullLlmTurn, autoSpymasterHint, runOperativeLoop, runBanterRound, runEndGameBanter, fireAndForget } from './deliberation.js';
 import { type TeamColor } from './types.js';
 import { initTTS, generateAudio, isTTSReady } from './ttsService.js';
 import { setTtsMode, ackTts } from './ttsGate.js';
@@ -88,7 +88,7 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
 // C3: Use fireAndForget for background LLM actions
 function afterHumanAction(gameId: string, team: TeamColor): void {
   logServer('INFO', 'afterHumanAction', `Triggered`, { gameId, team });
-  setAwaitingHumanContinuation(gameId, team, false);
+  setHumanPaused(gameId, team, false);
   fireAndForget(async () => {
     const game = getGame(gameId);
     if (game.winner) {
@@ -102,12 +102,17 @@ function afterHumanAction(gameId: string, team: TeamColor): void {
     }
     const updated = getGame(gameId);
     if (!updated.winner && updated.turn.activeTeam === team) {
-      logServer('INFO', 'afterHumanAction', `Running teammate round`, { gameId, team });
-      await runTeammateRound(gameId, team);
+      if (updated.turn.phase === 'hint') {
+        logServer('INFO', 'afterHumanAction', `Running auto spymaster hint`, { gameId, team });
+        await autoSpymasterHint(gameId, team);
+      } else if (updated.turn.phase === 'guess') {
+        logServer('INFO', 'afterHumanAction', `Running operative discussion loop`, { gameId, team });
+        await runOperativeLoop(gameId, team);
+      }
     }
     const postRound = getGame(gameId);
-    if (postRound.awaitingHumanContinuation[team]) {
-      logServer('INFO', 'afterHumanAction', `Paused for human continuation`, { gameId, team });
+    if (postRound.humanPaused[team]) {
+      logServer('INFO', 'afterHumanAction', `Paused by human`, { gameId, team });
       return;
     }
     logServer('INFO', 'afterHumanAction', `Running autoplay`, { gameId });
@@ -147,7 +152,8 @@ app.post('/api/games/:gameId/chat', (req, res) => {
     const team = parseTeam(req.body.team);
     const game = postChatMessage(req.params.gameId, team, req.body.playerId, req.body.content);
     res.json(serializeGame(game));
-    afterHumanAction(game.id, team);
+    // Chat does NOT trigger afterHumanAction — LLMs are already running freely.
+    // The human's message will be seen by LLMs in the next conversation round.
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
@@ -199,6 +205,28 @@ app.post('/api/games/:gameId/teams/:team/llm-deliberate', (req, res) => {
   }
 });
 
+// ✋ Hold on — pause LLM discussion
+app.post('/api/games/:gameId/teams/:team/pause', (req, res) => {
+  try {
+    const team = parseTeam(req.params.team);
+    setHumanPaused(req.params.gameId, team, true);
+    res.json(serializeGame(getGame(req.params.gameId)));
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+// ▶️ Continue — resume LLM discussion
+app.post('/api/games/:gameId/teams/:team/resume', (req, res) => {
+  try {
+    const team = parseTeam(req.params.team);
+    res.json({ status: 'ok' });
+    afterHumanAction(req.params.gameId, team);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
 app.post('/api/games/:gameId/tts-mode', (req, res) => {
   const enabled = !!req.body.enabled;
   setTtsMode(req.params.gameId, enabled);
@@ -206,6 +234,7 @@ app.post('/api/games/:gameId/tts-mode', (req, res) => {
 });
 
 app.post('/api/games/:gameId/tts-ack', (req, res) => {
+  touchGame(req.params.gameId);
   ackTts(req.params.gameId);
   res.json({ status: 'ok' });
 });
