@@ -201,7 +201,7 @@ export class LlmClient {
       '- Codenames has no board adjacency mechanics: never justify decisions with "near/close/next to" claims.',
       '- Never treat your own previous message as if it was written by another speaker.',
       '- You MUST directly respond to or reference what the previous speaker said before adding your own thoughts.',
-      '- When replying to a teammate/opponent, address them directly in second person ("you"), not third person ("they"/name).',
+      '- When replying to someone, use their NAME (e.g. "Good point, Red-2" or "Nice one, Blue-3"). Never use bare "you" without a name — it is confusing.',
       '- If you agree, say so briefly ("yeah", "totally", "good call"). If you disagree, explain why in one sentence.',
       '- Do NOT repeat information that was just stated by someone else.',
       '- Keep it short: 1-2 sentences max. Only go longer if you have a genuinely new strategic insight.',
@@ -254,7 +254,7 @@ export class LlmClient {
       : `Board: ${visibleCards}`;
 
     const stateContext = [
-      lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}". Reply directly to that speaker using "you".` : '',
+      lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}". Reply directly to ${lastOtherMsg.name} by name.` : '',
       `[GAME STATE] Team: ${team} | Your role: ${player.role} | Turn: ${game.turn.activeTeam}/${game.turn.phase}`,
       isBanterPhase ? `[BANTER STATE] Previous team: ${game.turn.previousTeam ?? 'unknown'} | Next team: ${game.turn.activeTeam}` : '',
       isBanterPhase ? `[BANTER TEAM CHECK] You=${team}; Opponent=${team === 'red' ? 'blue' : 'red'}` : '',
