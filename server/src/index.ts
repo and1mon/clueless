@@ -59,7 +59,11 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
       break;
     }
     logServer('INFO', 'autoplayIfNeeded', `Running full LLM turn`, { gameId, activeTeam: current.turn.activeTeam, iteration: i });
-    await runFullLlmTurn(gameId, current.turn.activeTeam, 20);
+    const didWork = await runFullLlmTurn(gameId, current.turn.activeTeam, 20);
+    if (!didWork) {
+      logServer('INFO', 'autoplayIfNeeded', `Turn did no work (lock contention), stopping loop`, { gameId, iteration: i });
+      break;
+    }
   }
 
   // Handle banter if we ended up in banter phase (e.g., after a turn switch)

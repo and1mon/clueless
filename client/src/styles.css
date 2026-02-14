@@ -217,7 +217,6 @@ body {
 }
 
 .personality-actions button:hover { color: var(--text); border-color: var(--muted); }
-
 /* Team cards */
 .teams-columns {
   display: grid;
@@ -392,6 +391,18 @@ body {
   padding: 0 1rem 1rem;
 }
 
+.model-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.team-models {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
 /* Submit */
 .setup-form > button[type="submit"] {
   padding: 0.9rem;
@@ -416,6 +427,7 @@ body {
   .setup-top-group { flex-wrap: wrap; }
   .teams-columns { grid-template-columns: 1fr; }
   .connection-fields { grid-template-columns: 1fr; }
+  .team-models { grid-template-columns: 1fr; }
 }
 
 .error { color: #ef4444; font-size: 0.9rem; margin: 0.5rem 1rem; }

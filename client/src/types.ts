@@ -61,6 +61,7 @@ export interface GameState {
   };
   winner?: TeamColor;
   loserReason?: string;
+  llmNeutralMode: boolean;
   deliberating: Record<TeamColor, boolean>;
   awaitingHumanContinuation: Record<TeamColor, boolean>;
   llmConfig: { baseUrl: string; model: string };

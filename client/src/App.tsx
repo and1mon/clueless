@@ -95,6 +95,9 @@ export function App(): JSX.Element {
     teamSize: 4,
     baseUrl: '',
     model: '',
+    redModel: '',
+    blueModel: '',
+    neutralLlmMode: true,
     apiKey: '',
     redPlayers: defaultLlmPlayers('red', 3),
     bluePlayers: defaultLlmPlayers('blue', 4),
@@ -481,7 +484,8 @@ export function App(): JSX.Element {
     setSetup((s) => {
       const players = [...s[key]];
       players[index] = { ...players[index], [field]: value };
-      return { ...s, [key]: players };
+      const shouldDisableNeutral = field === 'personality' && value.trim().length > 0;
+      return { ...s, [key]: players, neutralLlmMode: shouldDisableNeutral ? false : s.neutralLlmMode };
     });
   };
 
@@ -490,6 +494,7 @@ export function App(): JSX.Element {
     let idx = 0;
     setSetup((s) => ({
       ...s,
+      neutralLlmMode: false,
       redPlayers: s.redPlayers.map((p) => {
         const pick = shuffled[idx++ % shuffled.length];
         return { ...p, name: pick.name, personality: pick.description };
@@ -504,6 +509,7 @@ export function App(): JSX.Element {
   const clearAllPersonalities = (): void => {
     setSetup((s) => ({
       ...s,
+      neutralLlmMode: true,
       redPlayers: s.redPlayers.map((p, i) => ({ ...p, name: `Red-${i + 1}`, personality: '' })),
       bluePlayers: s.bluePlayers.map((p, i) => ({ ...p, name: `Blue-${i + 1}`, personality: '' })),
     }));
@@ -533,6 +539,11 @@ export function App(): JSX.Element {
               personality: p.personality || undefined,
             })),
           },
+          llmTeamModels: {
+            red: setup.redModel || undefined,
+            blue: setup.blueModel || undefined,
+          },
+          llmNeutralMode: setup.neutralLlmMode,
           llm: { baseUrl: setup.baseUrl, model: setup.model, apiKey: setup.apiKey },
         }),
       });
@@ -717,7 +728,7 @@ export function App(): JSX.Element {
             </div>
             <div className="personality-actions">
               <button type="button" onClick={assignRandomPersonalities}>Randomize</button>
-              <button type="button" onClick={clearAllPersonalities} className="secondary">Clear all</button>
+              <button type="button" onClick={clearAllPersonalities} className="secondary">Clear all (neutral)</button>
             </div>
           </div>
 
@@ -730,7 +741,13 @@ export function App(): JSX.Element {
             <summary>Connection settings</summary>
             <div className="connection-fields">
               <label>Endpoint <input value={setup.baseUrl} onChange={(e) => setSetup((s) => ({ ...s, baseUrl: e.target.value }))} placeholder="from .env" /></label>
-              <label>Default model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
+              <div className="model-group">
+                <label>Global default model <input value={setup.model} onChange={(e) => setSetup((s) => ({ ...s, model: e.target.value }))} placeholder="from .env" /></label>
+                <div className="team-models">
+                  <label>Red team model <input value={setup.redModel} onChange={(e) => setSetup((s) => ({ ...s, redModel: e.target.value }))} placeholder="optional override" /></label>
+                  <label>Blue team model <input value={setup.blueModel} onChange={(e) => setSetup((s) => ({ ...s, blueModel: e.target.value }))} placeholder="optional override" /></label>
+                </div>
+              </div>
               <label>API key <input value={setup.apiKey} onChange={(e) => setSetup((s) => ({ ...s, apiKey: e.target.value }))} placeholder="from .env" type="password" /></label>
             </div>
           </details>

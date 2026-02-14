@@ -101,6 +101,7 @@ function createPlayers(input: CreateGameInput): {
   (['red', 'blue'] as TeamColor[]).forEach((team) => {
     const llmCount = llmPerTeam[team] ?? 0;
     const configs = input.llmPlayerConfigs?.[team] ?? [];
+    const teamDefaultModel = input.llmTeamModels?.[team]?.trim();
     for (let i = 0; i < llmCount; i += 1) {
       const cfg = configs[i];
       const id = `llm-${team}-${i + 1}-${randomUUID()}`;
@@ -114,7 +115,7 @@ function createPlayers(input: CreateGameInput): {
         team,
         type: 'llm',
         personality: cfg?.personality?.trim() || defaultPersonality,
-        model: cfg?.model?.trim() || undefined,
+        model: cfg?.model?.trim() || teamDefaultModel || undefined,
         voice: pickVoice(personalityIdx - 1),
       };
       teams[team].players.push(id);
@@ -182,6 +183,7 @@ export function createGame(input: CreateGameInput): GameState {
       model: input.llm?.model?.trim() || DEFAULT_LLM.model,
       apiKey: input.llm?.apiKey?.trim() || DEFAULT_LLM.apiKey,
     },
+    llmNeutralMode: !!input.llmNeutralMode,
     deliberating: { red: false, blue: false },
     awaitingHumanContinuation: { red: false, blue: false },
   };

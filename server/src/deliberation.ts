@@ -14,7 +14,7 @@ import {
   submitHint,
   voteOnProposal,
 } from './gameStore.js';
-import { LlmClient } from './llmClient.js';
+import { LlmClient, type LlmResponse } from './llmClient.js';
 import type { Player, TeamColor } from './types.js';
 import { waitForTtsAck } from './ttsGate.js';
 
@@ -124,6 +124,51 @@ function isStillActiveTeam(gameId: string, team: TeamColor): boolean {
   return !g.winner && g.turn.activeTeam === team;
 }
 
+function validateActionForTurn(params: {
+  game: ReturnType<typeof getGame>;
+  player: Player;
+  action: LlmResponse['action'];
+  pending: Array<{ id: string; createdBy: string; status: string }>;
+}): string | null {
+  const { game, player, action, pending } = params;
+  const phase = game.turn.phase;
+
+  if (phase === 'banter') {
+    return action.type === 'none' ? null : `Only chat (no actions) is allowed during banter, got ${action.type}.`;
+  }
+
+  if (player.role === 'spymaster') {
+    if (phase === 'hint') return action.type === 'hint' ? null : `Spymaster MUST submit a hint using submit_hint tool, got ${action.type}.`;
+    return action.type === 'none' ? null : `Spymaster must stay silent outside hint phase, got ${action.type}.`;
+  }
+
+  if (phase === 'hint') {
+    return action.type === 'none' ? null : `Operatives cannot act before hint, got ${action.type}.`;
+  }
+
+  const pendingFromOthers = pending.find((p) => p.createdBy !== player.id && p.status === 'pending');
+  const hasPending = pending.some((p) => p.status === 'pending');
+
+  if (pendingFromOthers) {
+    if (action.type !== 'vote') return `You must vote on pending proposal ${pendingFromOthers.id}, got ${action.type}.`;
+    return null;
+  }
+
+  if (hasPending) {
+    return action.type === 'none' ? null : `Only chat is allowed while your own proposal is pending, got ${action.type}.`;
+  }
+
+  if (action.type === 'none' || action.type === 'propose_guess' || action.type === 'propose_end_turn') return null;
+  return `Action ${action.type} is not allowed in current guess state.`;
+}
+
+function fallbackChatForAction(action: LlmResponse['action']): string {
+  if (action.type === 'vote') return action.decision === 'accept' ? 'I agree with that.' : 'I don\'t think that is right.';
+  if (action.type === 'propose_guess') return `I think "${action.word}" fits best.`;
+  if (action.type === 'propose_end_turn') return 'I think we should end the turn.';
+  return '...';
+}
+
 // ---------------------------------------------------------------------------
 // Core: run a single LLM player turn
 // ---------------------------------------------------------------------------
@@ -173,14 +218,22 @@ async function runOnePlayer(
   const boardWords = game.cards.map((c) => c.word.toLowerCase());
 
   const isHinting = player.role === 'spymaster' && game.turn.phase === 'hint';
-  const maxAttempts = isHinting ? 5 : 1;
+  const mustCallTool = isHinting || (player.role === 'operative' && game.turn.phase === 'guess' && pending.some((p) => p.createdBy !== playerId && p.status === 'pending'));
+  const maxAttempts = isHinting ? 5 : (mustCallTool ? 3 : 2);
   const rejectedWords: string[] = [];
+  const invalidActionReasons: string[] = [];
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       let extraHistory = rejectedWords.length
         ? [...chatHistory, { name: 'System', content: `Your previous hints were rejected because they are words on the board: ${rejectedWords.join(', ')}. Pick a DIFFERENT word that is NOT on the board.` }]
         : chatHistory;
+      if (invalidActionReasons.length > 0) {
+        extraHistory = [...extraHistory, {
+          name: 'System',
+          content: `Your previous action was invalid: ${invalidActionReasons[invalidActionReasons.length - 1]} Follow allowed tools/actions exactly.`,
+        }];
+      }
 
       // Vote reminders
       if (pending.length > 0 && player.role === 'operative') {
@@ -216,24 +269,19 @@ async function runOnePlayer(
 
       const action = response.action;
       logInfo('runOnePlayer', `LLM response received`, { gameId, team, playerId, actionType: action.type });
-      const mustVoteProposal = game.turn.phase === 'guess' && player.role === 'operative'
-        ? pending.find((p) => p.createdBy !== playerId)
-        : undefined;
-      if (mustVoteProposal) {
-        if (action.type !== 'vote') {
-          logWarn('runOnePlayer', `Expected vote but got non-vote action`, {
-            gameId, team, playerId, actionType: action.type, proposalId: mustVoteProposal.id,
-          });
-          ts.failures++;
-          return false;
-        }
-        if (action.proposalId !== mustVoteProposal.id) {
-          logWarn('runOnePlayer', `Expected vote on pending proposal`, {
-            gameId, team, playerId, expectedProposalId: mustVoteProposal.id, gotProposalId: action.proposalId,
-          });
-          ts.failures++;
-          return false;
-        }
+      const validationError = validateActionForTurn({
+        game,
+        player,
+        action,
+        pending: pending.map((p) => ({ id: p.id, createdBy: p.createdBy, status: p.status })),
+      });
+      if (validationError) {
+        logWarn('runOnePlayer', `Invalid action for turn`, {
+          gameId, team, playerId, actionType: action.type, validationError, attempt,
+        });
+        ts.failures++;
+        invalidActionReasons.push(validationError);
+        continue;
       }
 
       // Validate hint
@@ -253,8 +301,14 @@ async function runOnePlayer(
           continue;
         }
       } else {
-        if (response.message && response.message !== '...') {
-          postChatMessage(gameId, team, player.id, response.message);
+        const chatMessage = (response.message && response.message !== '...')
+          ? response.message
+          : (player.role === 'operative' && game.turn.phase === 'guess' && action.type !== 'none'
+              ? fallbackChatForAction(action)
+              : '...');
+
+        if (chatMessage !== '...') {
+          postChatMessage(gameId, team, player.id, chatMessage);
           getTeamState(gameId, team).lastSpeakerId = player.id;
           if (
             game.turn.phase === 'guess'
@@ -317,7 +371,7 @@ async function runOnePlayer(
     }
   }
 
-  logError('runOnePlayer', `Failed to produce valid hint after max attempts`, undefined, { gameId, team, playerId, playerName: player.name, maxAttempts });
+  logError('runOnePlayer', `Failed to produce valid action after max attempts`, undefined, { gameId, team, playerId, playerName: player.name, maxAttempts });
   return false;
 }
 
@@ -642,7 +696,7 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
 // ---------------------------------------------------------------------------
 // C2 + C6: Full LLM turn — restructured as a while loop with clear phases
 // ---------------------------------------------------------------------------
-export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds = 20): Promise<void> {
+export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds = 20): Promise<boolean> {
   logInfo('runFullLlmTurn', `Starting full LLM turn`, { gameId, team, maxRounds });
   
   // Phase 1: Handle any pending banter (before acquiring lock — involves both teams)
@@ -650,7 +704,7 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
 
   if (!acquireLock(gameId, team)) {
     logWarn('runFullLlmTurn', `Could not acquire lock`, { gameId, team });
-    return;
+    return false;
   }
   try {
     setDeliberating(gameId, team, true);
@@ -660,7 +714,7 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
     logInfo('runFullLlmTurn', `Phase 2: Spymaster hint`, { gameId, team });
     if (!await runSpymasterHint(gameId, team)) {
       logWarn('runFullLlmTurn', `Spymaster hint failed, exiting`, { gameId, team });
-      return;
+      return true;
     }
 
     // Phase 3: Operative conversation rounds until turn ends
@@ -677,16 +731,16 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
       const ok = await runConversationRound(gameId, team);
       if (!ok) {
         logWarn('runFullLlmTurn', `Conversation round returned false, exiting`, { gameId, team, round });
-        return;
+        return true;
       }
 
       if (isGameOver(gameId)) {
         logInfo('runFullLlmTurn', `Game over, exiting`, { gameId, team, round });
-        return;
+        return true;
       }
       if (!isStillActiveTeam(gameId, team)) {
         logInfo('runFullLlmTurn', `No longer active team, exiting`, { gameId, team, round });
-        return;
+        return true;
       }
 
       // D2: React after a successful guess
@@ -703,7 +757,7 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
       if (staleRounds >= 25) {
         logError('runFullLlmTurn', `Too many stale rounds, forfeiting`, undefined, { gameId, team, staleRounds });
         forfeitTurn(gameId, team, `Team ${team} couldn't make progress. Turn forfeited.`);
-        return;
+        return true;
       }
 
       round++;
@@ -715,6 +769,7 @@ export async function runFullLlmTurn(gameId: string, team: TeamColor, maxRounds 
       forfeitTurn(gameId, team, `Team ${team} took too long deliberating. Turn forfeited.`);
     }
     logInfo('runFullLlmTurn', `Full LLM turn completed`, { gameId, team, totalRounds: round });
+    return true;
   } finally {
     setDeliberating(gameId, team, false);
     releaseLock(gameId, team);

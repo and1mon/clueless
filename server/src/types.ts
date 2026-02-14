@@ -79,6 +79,7 @@ export interface GameState {
   winner?: TeamColor;
   loserReason?: string;
   llmConfig: LlmConfig;
+  llmNeutralMode: boolean;
   deliberating: Record<TeamColor, boolean>;
   awaitingHumanContinuation: Record<TeamColor, boolean>;
   llmError?: string;
@@ -96,6 +97,8 @@ export interface CreateGameInput {
   humanTeam?: TeamColor;
   humanRole?: PlayerRole | 'spectator';
   llmPlayers?: Partial<Record<TeamColor, number>>;
+  llmTeamModels?: Partial<Record<TeamColor, string>>;
   llmPlayerConfigs?: Partial<Record<TeamColor, LlmPlayerInput[]>>;
+  llmNeutralMode?: boolean;
   llm?: Partial<LlmConfig>;
 }

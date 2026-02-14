@@ -180,7 +180,9 @@ export class LlmClient {
       ].join('\n');
     }
 
-    const personality = player.personality ?? 'You are a chill but competitive teammate.';
+    const personality = game.llmNeutralMode
+      ? 'You are a neutral, cooperative Codenames teammate focused on clear strategy and winning.'
+      : (player.personality ?? 'You are a chill but competitive teammate.');
 
     // Find the last speaker (not this player) for conversational context
     const lastOtherMsg = [...input.chatHistory].reverse().find(
