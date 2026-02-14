@@ -91,7 +91,7 @@ export function App(): JSX.Element {
   const [setup, setSetup] = useState({
     humanName: 'You',
     humanTeam: 'red' as TeamColor,
-    humanRole: 'operative' as PlayerRole | 'spectator',
+    humanRole: 'spectator' as PlayerRole | 'spectator',
     teamSize: 4,
     baseUrl: '',
     model: '',
@@ -99,7 +99,7 @@ export function App(): JSX.Element {
     blueModel: '',
     neutralLlmMode: true,
     apiKey: '',
-    redPlayers: defaultLlmPlayers('red', 3),
+    redPlayers: defaultLlmPlayers('red', 4),
     bluePlayers: defaultLlmPlayers('blue', 4),
   });
 

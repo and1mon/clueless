@@ -60,6 +60,165 @@ function parseResponse(data: unknown): LlmResponse {
   return { message: message || '...', action: { type: 'none' } };
 }
 
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const GAME_RULES = `## Codenames Rules
+Two teams (red & blue) compete to find their words on a shared board.
+Each turn: the spymaster gives a one-word hint + a number, then operatives discuss and guess.
+A guess reveals the word's owner: your team (good), other team (bad), neutral (ends turn), or assassin (instant loss).
+Operatives propose guesses that the team votes on (majority wins). They can also propose ending the turn.
+Words have NO spatial positions on the board — there is no adjacency, "close to", or "next to".
+Spymasters act during the hint phase. Operatives act during the guess phase.
+During banter phase (between turns), everyone chats but nobody takes game actions.`;
+
+const ACTION_SCHEMA = `## Response Format
+Always respond with JSON: {"message": "your chat message", "action": {...}}
+
+Action types:
+- {"type": "none"} — just chat, no game action
+- {"type": "hint", "word": "WORD", "count": N} — spymaster gives a hint (hint phase only)
+- {"type": "propose_guess", "word": "BOARD_WORD"} — propose guessing a word (guess phase, operatives)
+- {"type": "propose_end_turn"} — propose ending the turn (guess phase, operatives)
+- {"type": "vote", "proposalId": "ID", "decision": "accept"|"reject"} — vote on a pending proposal`;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildSystemPrompt(player: Player, team: TeamColor, personality: string): string {
+  return [
+    `You are ${player.name}, playing Codenames on team ${team}. Role: ${player.role}.`,
+    personality,
+    '',
+    GAME_RULES,
+    '',
+    ACTION_SCHEMA,
+    '',
+    `## Communication
+- 1-2 sentences. Say what you think and briefly why.
+- When discussing guesses, explain the connection to the hint.
+- Your message must match your action.`,
+  ].join('\n');
+}
+
+function buildChatMessages(
+  chatHistory: Array<{ name: string; content: string }>,
+  playerName: string,
+): Array<{ role: 'assistant' | 'user'; content: string }> {
+  const raw = chatHistory
+    .slice(-50)
+    .filter((m) => m.content && m.content.trim())
+    .map((m) => ({
+      role: (m.name === playerName ? 'assistant' : 'user') as 'assistant' | 'user',
+      content: m.name === playerName ? m.content : `${m.name}: ${m.content}`,
+    }));
+
+  // Merge consecutive same-role messages
+  const merged: Array<{ role: 'assistant' | 'user'; content: string }> = [];
+  for (const msg of raw) {
+    const last = merged[merged.length - 1];
+    if (last && last.role === msg.role) {
+      last.content += `\n${msg.content}`;
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+
+  // Strict models require conversation to start with 'user'
+  if (merged.length > 0 && merged[0].role === 'assistant') {
+    merged.unshift({ role: 'user', content: '[game chat begins]' });
+  }
+
+  return merged;
+}
+
+function buildSituation(input: {
+  game: GameState;
+  team: TeamColor;
+  player: Player;
+  pendingProposals: Proposal[];
+  endGameBanter?: boolean;
+}): string {
+  const { game, team, player } = input;
+  const lines: string[] = [];
+
+  // -- Board view --
+  if (game.turn.phase === 'banter' || input.endGameBanter) {
+    const revealed = game.cards.filter((c) => c.revealed).map((c) => `${c.word} (${c.owner})`);
+    lines.push(`Revealed cards: ${revealed.length ? revealed.join(', ') : 'none yet'}`);
+  } else {
+    const board = game.cards.map((card) => {
+      if (card.revealed) return `[${card.word} → ${card.owner}]`;
+      if (player.role === 'spymaster') return `${card.word}(${card.owner})`;
+      return card.word;
+    });
+    lines.push(`Board: ${board.join(', ')}`);
+  }
+
+  // -- Score --
+  const remainingRed = game.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
+  const remainingBlue = game.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
+  lines.push(`Score: Red ${remainingRed} remaining, Blue ${remainingBlue} remaining`);
+  lines.push(`Your team: ${team}`);
+
+  // -- End game --
+  if (input.endGameBanter) {
+    const isWinner = team === game.winner;
+    lines.push(`Game over — ${isWinner ? 'your team won!' : 'your team lost.'}`);
+    lines.push('Your turn to respond.');
+    return lines.join('\n');
+  }
+
+  // -- Turn info --
+  lines.push(`Current turn: team ${game.turn.activeTeam}, phase: ${game.turn.phase}`);
+
+  if (game.turn.phase === 'banter') {
+    lines.push(`Previous team: ${game.turn.previousTeam ?? 'unknown'}, next team: ${game.turn.activeTeam}`);
+  }
+
+  // -- Hint phase: spymaster target/avoid lists --
+  if (player.role === 'spymaster' && game.turn.phase === 'hint') {
+    const enemyTeam = team === 'red' ? 'blue' : 'red';
+    const myWords = game.cards.filter((c) => c.owner === team && !c.revealed).map((c) => c.word);
+    const enemyWords = game.cards.filter((c) => c.owner === enemyTeam && !c.revealed).map((c) => c.word);
+    const assassinWords = game.cards.filter((c) => c.owner === 'assassin' && !c.revealed).map((c) => c.word);
+    const allBoardWords = game.cards.map((c) => c.word.toLowerCase());
+
+    lines.push(`Your team's words (target these): ${myWords.join(', ')}`);
+    lines.push(`Enemy words (avoid): ${enemyWords.join(', ')}`);
+    lines.push(`Assassin (instant loss if guessed): ${assassinWords.join(', ')}`);
+    lines.push(`Your hint CANNOT be any board word: ${allBoardWords.join(', ')}`);
+  }
+
+  // -- Guess phase info --
+  if (game.turn.phase === 'guess') {
+    lines.push(`Hint: "${game.turn.hintWord}" (${game.turn.hintCount}) — ${game.turn.guessesMade}/${game.turn.maxGuesses} guesses used`);
+    if (player.role === 'operative') {
+      const unrevealed = game.cards.filter((c) => !c.revealed).map((c) => c.word);
+      lines.push(`Valid words to guess (ONLY from this list): ${unrevealed.join(', ')}`);
+    }
+  }
+
+  // -- Pending proposals --
+  if (input.pendingProposals.length > 0) {
+    const proposalLines = input.pendingProposals.map((p) =>
+      `  ID="${p.id}" ${p.kind}${p.payload.word ? ` "${p.payload.word}"` : ''} by ${game.players[p.createdBy]?.name ?? '?'} votes=${JSON.stringify(p.votes)}`
+    );
+    lines.push(`Pending proposals:\n${proposalLines.join('\n')}`);
+  } else {
+    lines.push('Pending proposals: none');
+  }
+
+  lines.push('Your turn to respond.');
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// LLM Client
+// ---------------------------------------------------------------------------
+
 export class LlmClient {
   constructor(private readonly config: { baseUrl: string; model: string; apiKey?: string }) {}
 
@@ -73,203 +232,20 @@ export class LlmClient {
   }): Promise<LlmResponse> {
     const { game, player, team } = input;
 
-    const visibleCards = game.cards
-      .map((card) => {
-        if (card.revealed) return `[${card.word} → ${card.owner}]`;
-        if (player.role === 'spymaster') return `${card.word}(${card.owner})`;
-        return card.word;
-      })
-      .join(', ');
-
-    const remainingRed = game.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
-    const remainingBlue = game.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
-
-    const isSpymaster = player.role === 'spymaster';
-    const isHintPhase = game.turn.phase === 'hint';
-    const isBanterPhase = game.turn.phase === 'banter';
-
-    const proposalLines = input.pendingProposals.length
-      ? input.pendingProposals.map((p) =>
-          `  ID="${p.id}" ${p.kind}${p.payload.word ? ` "${p.payload.word}"` : ''} by ${game.players[p.createdBy]?.name ?? '?'} votes=${JSON.stringify(p.votes)}`
-        ).join('\n')
-      : '  none';
-
-    // Build role-specific instructions
-    let roleInstructions: string;
-
-    const allBoardWords = game.cards.map((c) => c.word.toLowerCase());
-
-    if (input.endGameBanter) {
-      const isWinner = team === game.winner;
-      roleInstructions = isWinner
-        ? 'Game over — you won! Say something.'
-        : 'Game over — you lost. React to it.';
-    } else if (isBanterPhase) {
-      const isOutgoing = game.turn.previousTeam === team;
-      const opponentTeam = team === 'red' ? 'blue' : 'red';
-      roleInstructions = [
-        'Banter phase is intermission between turns.',
-        `You are on team ${team}.`,
-        `You are NOT on team ${opponentTeam}. Never speak as if you are ${opponentTeam}.`,
-        `Team that just finished: ${game.turn.previousTeam ?? 'unknown'}.`,
-        `Team that plays next after banter: ${game.turn.activeTeam}.`,
-        isOutgoing ? 'Your team just finished its turn.' : 'Your team is up next after banter.',
-        'If prior chat lines are prefixed with team labels, treat your own team label as your perspective and the other team as opponents.',
-        'Do NOT hint, guess, propose, or vote in banter.',
-        'Do NOT reference unrevealed board words like you are guessing.',
-        'Use recent round events from chat (reveals, rejected proposals, bad guesses) for taunts/reactions.',
-        'Keep it to light reaction/taunt and momentum talk.',
-        'action: {"type":"none"}',
-      ].join('\n');
-    } else if (isSpymaster && isHintPhase) {
-      const enemyTeam = team === 'red' ? 'blue' : 'red';
-      const myWords = game.cards.filter((c) => c.owner === team && !c.revealed).map((c) => c.word);
-      const enemyWords = game.cards.filter((c) => c.owner === enemyTeam && !c.revealed).map((c) => c.word);
-      const assassinWords = game.cards.filter((c) => c.owner === 'assassin' && !c.revealed).map((c) => c.word);
-
-      roleInstructions = [
-        `You're the spymaster. Give a one-word hint + a number.`,
-        'Important: board words have no spatial positions; there is no "close", "next to", or adjacency logic in Codenames.',
-        `Target these: ${myWords.join(', ')}`,
-        `Avoid these: ${enemyWords.join(', ')} (enemy team), ${assassinWords.join(', ')} (assassin - instant loss)`,
-        `Your hint CANNOT be any board word: ${allBoardWords.join(', ')}`,
-        `The number = how many target words connect to your hint.`,
-        'message: "..." (stay quiet)',
-        'action: {"type":"hint","word":"your_hint","count":2}',
-      ].join('\n');
-    } else if (isSpymaster && !isHintPhase) {
-      roleInstructions = 'Stay silent, game is guessing.';
-    } else if (!isHintPhase) {
-      const hasPending = input.pendingProposals.length > 0;
-      const unrevealed = game.cards.filter((c) => !c.revealed).map((c) => c.word);
-
-      let voteInstructions = '';
-      if (hasPending) {
-        const proposal = input.pendingProposals[0];
-        const proposer = game.players[proposal.createdBy]?.name ?? 'someone';
-        const isOwnProposal = proposal.createdBy === player.id;
-
-        if (isOwnProposal) {
-          voteInstructions = `You proposed ${proposal.kind === 'guess' ? `guessing "${proposal.payload.word}"` : 'ending the turn'}. Wait for votes.`;
-        } else {
-          const what = proposal.kind === 'guess' ? `guess "${proposal.payload.word}"` : 'end the turn';
-          voteInstructions = `${proposer} wants to ${what}. You MUST vote NOW.\nONLY valid action now: {"type":"vote","proposalId":"${proposal.id}","decision":"accept"|"reject"}\nIf you keep debating instead of voting, your team can lose the turn.`;
-        }
-      }
-
-      const proposalExamples = [
-        'To propose a guess: action: {"type":"propose_guess","word":"BOARD_WORD"}',
-        'To end the turn: action: {"type":"propose_end_turn"}',
-        'To just talk: action: {"type":"none"}',
-      ].join('\n');
-
-      roleInstructions = [
-        `Hint: "${game.turn.hintWord}" (${game.turn.hintCount}) — ${game.turn.guessesMade}/${game.turn.maxGuesses} guesses used.`,
-        `Valid guesses: ${unrevealed.join(', ')}`,
-        'Important: board words have no spatial positions. Do not use "close to", "near", "next to", or adjacency arguments.',
-        'Judge guesses only by semantic relation to the hint and game risk (enemy/assassin), not board layout.',
-        '',
-        voteInstructions || proposalExamples,
-      ].join('\n');
-    } else {
-      roleInstructions = [
-        'Waiting for your spymaster hint.',
-        'Do not guess, propose, or vote yet.',
-        'You can only chat briefly with teammates.',
-        'action: {"type":"none"}',
-      ].join('\n');
-    }
-
     const personality = game.llmNeutralMode
       ? 'You are a neutral, cooperative Codenames teammate focused on clear strategy and winning.'
       : (player.personality ?? 'You are a chill but competitive teammate.');
 
-    // Find the last speaker (not this player) for conversational context
-    const lastOtherMsg = [...input.chatHistory].reverse().find(
-      (m) => m.name !== player.name && m.name !== 'System'
-    );
+    const system = buildSystemPrompt(player, team, personality);
+    const chatMessages = buildChatMessages(input.chatHistory, player.name);
+    const situation = buildSituation(input);
 
-    // Find human player on the same team for direct address
-    const humanTeammate = Object.values(game.players).find(
-      (p) => p.type === 'human' && p.team === team && p.id !== player.id
-    );
-
-    const conversationRules = [
-      'CONVERSATION RULES (follow strictly):',
-      '- PRIMARY GOAL: win the game, not roleplay the personality.',
-      '- Personality is flavor only. Be flexible and compromise when needed to keep team momentum.',
-      '- Codenames has no board adjacency mechanics: never justify decisions with "near/close/next to" claims.',
-      '- Never treat your own previous message as if it was written by another speaker.',
-      '- You MUST directly respond to or reference what the previous speaker said before adding your own thoughts.',
-      '- When replying to someone, use their NAME (e.g. "Good point, Red-2" or "Nice one, Blue-3"). Never use bare "you" without a name — it is confusing.',
-      '- If you agree, say so briefly ("yeah", "totally", "good call"). If you disagree, explain why in one sentence.',
-      '- Do NOT repeat information that was just stated by someone else.',
-      '- Keep it short: 1-2 sentences max. Only go longer if you have a genuinely new strategic insight.',
-      '- For simple reactions, keep it very brief — a few words is fine ("nice!", "oof", "let\'s go").',
-      '- Vary your tone: sometimes be brief, sometimes elaborate. Don\'t always use the same pattern.',
-      '- If there is a pending proposal from a teammate, stop debating and vote immediately.',
-      '- Taking too long to vote can forfeit your team\'s turn.',
-      humanTeammate ? `- Occasionally address ${humanTeammate.name} by name and ask for their opinion or input.` : '',
-    ].filter(Boolean).join('\n');
-
-    const system = [
-      `You're ${player.name}, on team ${team} playing Codenames. Role: ${player.role}.`,
-      `Personality: ${personality}`,
-      '',
-      conversationRules,
-      '',
-      'Respond as JSON: {"message": "...", "action": {...}}',
-      '',
-      roleInstructions,
-    ].join('\n');
-
-    // Build chat history — mark own messages as assistant role
-    const rawChatMessages = input.chatHistory.slice(-50)
-      .filter((m) => m.content && m.content.trim()) // filter empty messages
-      .map((m) => ({
-        role: (m.name === player.name ? 'assistant' : 'user') as 'assistant' | 'user',
-        content: m.name === player.name ? m.content : `${m.name}: ${m.content}`,
-      }));
-
-    // Ensure strict role alternation: merge consecutive same-role messages
-    const chatMessages: Array<{ role: 'assistant' | 'user'; content: string }> = [];
-    for (const msg of rawChatMessages) {
-      if (!msg.content.trim()) continue; // skip empty
-      const last = chatMessages[chatMessages.length - 1];
-      if (last && last.role === msg.role) {
-        last.content += `\n${msg.content}`;
-      } else {
-        chatMessages.push({ ...msg });
-      }
-    }
-
-    // Strict models require conversation to start with 'user'
-    if (chatMessages.length > 0 && chatMessages[0].role === 'assistant') {
-      chatMessages.unshift({ role: 'user', content: '[conversation start]' });
-    }
-
-    const revealedCards = game.cards.filter((c) => c.revealed).map((c) => `[${c.word} → ${c.owner}]`).join(', ');
-    const boardContext = isBanterPhase
-      ? `Revealed cards: ${revealedCards || 'none yet'}`
-      : `Board: ${visibleCards}`;
-
-    const stateContext = [
-      lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}". Reply directly to ${lastOtherMsg.name} by name.` : '',
-      `[GAME STATE] Team: ${team} | Your role: ${player.role} | Turn: ${game.turn.activeTeam}/${game.turn.phase}`,
-      isBanterPhase ? `[BANTER STATE] Previous team: ${game.turn.previousTeam ?? 'unknown'} | Next team: ${game.turn.activeTeam}` : '',
-      isBanterPhase ? `[BANTER TEAM CHECK] You=${team}; Opponent=${team === 'red' ? 'blue' : 'red'}` : '',
-      `Score: Red ${remainingRed} left, Blue ${remainingBlue} left`,
-      boardContext,
-      `Pending proposals:\n${proposalLines}`,
-      'Now it\'s your turn to respond. Return JSON with "message" and "action".',
-    ].filter(Boolean).join('\n');
-
-    // Ensure the final message is 'user' (stateContext) with proper alternation
+    // Append situation to the last user message or add as new user message
     if (chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user') {
-      // Must insert an assistant message before adding another user message
-      chatMessages.push({ role: 'assistant', content: 'Understood.' });
+      chatMessages[chatMessages.length - 1].content += `\n\n---\n${situation}`;
+    } else {
+      chatMessages.push({ role: 'user', content: situation });
     }
-    chatMessages.push({ role: 'user', content: stateContext });
 
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.apiKey) headers.Authorization = `Bearer ${this.config.apiKey}`;
