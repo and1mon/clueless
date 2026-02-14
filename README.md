@@ -1,6 +1,6 @@
 # Clueless
 
-A word spy game where LLM-powered players debate, bluff, and compete on teams. Play as a spymaster or operative alongside AI teammates, or spectate a fully autonomous match.
+A word spy game inspired by Codenames where LLM-powered players debate and compete on teams. Play as a spymaster or operative alongside AI teammates, or spectate a fully autonomous match.
 
 ## Stack
 
@@ -20,12 +20,12 @@ LLM_API_KEY=your-api-key
 PORT=3001
 ```
 
-| Variable | Default | Description |
-|---|---|---|
-| `LLM_BASE_URL` | `http://localhost:8082/v1` | Base URL of your OpenAI-compatible endpoint |
-| `LLM_MODEL` | `Qwen3-VL-8B-Instruct-Q8_0` | Model name to use |
-| `LLM_API_KEY` | (empty) | API key, if your endpoint requires one |
-| `PORT` | `3001` | Server port |
+| Variable | Description |
+|---|---|
+| `LLM_BASE_URL` | Base URL of your OpenAI-compatible endpoint |
+| `LLM_MODEL` | Model name to use |
+| `LLM_API_KEY` | API key, if your endpoint requires one |
+| `PORT` | Server port |
 
 Then install and run:
 
