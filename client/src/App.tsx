@@ -722,7 +722,7 @@ export function App(): JSX.Element {
         <div className="setup-header">
           <div>
             <h1>Clueless</h1>
-            <p className="subtitle">Codenames with LLM teammates</p>
+            <p className="subtitle">Word spy game with LLM teammates</p>
           </div>
           <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">{theme === 'dark' ? '☀️' : '🌙'}</button>
         </div>
@@ -862,6 +862,9 @@ export function App(): JSX.Element {
                 <span className="hint-word">"{turn.hintWord}"</span>
                 <span className="hint-count">{turn.hintCount}</span>
                 <span className="hint-progress">{turn.guessesMade} / {turn.maxGuesses} guesses</span>
+                {showSpyView && turn.hintTargets?.length ? (
+                  <span className="hint-targets">targeting: {turn.hintTargets.join(', ')}</span>
+                ) : null}
               </div>
             ) : (
               <div className="game-status">

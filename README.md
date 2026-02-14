@@ -1,6 +1,6 @@
 # Clueless
 
-Clueless is a local Codenames-inspired game where one human and multiple LLM players chat, propose hints/guesses, vote, and play turns until a winner is decided.
+Clueless is a local word spy game where one human and multiple LLM players chat, propose hints/guesses, vote, and play turns until a winner is decided.
 
 ## Stack
 

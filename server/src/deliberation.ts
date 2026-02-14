@@ -194,8 +194,8 @@ async function runOnePlayer(
     logWarn('runOnePlayer', `Skipped - player not LLM`, { gameId, team, playerId });
     return false;
   }
-  if (player.role === 'spymaster' && (game.turn.phase === 'guess' || isBanter)) {
-    logInfo('runOnePlayer', `Skipped - spymaster in guess/banter phase`, { gameId, team, playerId, phase: game.turn.phase });
+  if (player.role === 'spymaster' && game.turn.phase === 'guess') {
+    logInfo('runOnePlayer', `Skipped - spymaster in guess phase`, { gameId, team, playerId, phase: game.turn.phase });
     return false;
   }
 
@@ -206,10 +206,10 @@ async function runOnePlayer(
     ? game.chatLog.slice(-60)
     : game.chatLog.filter((m) => m.team === team || m.phase === 'banter');
   const chatHistory = chatHistorySource
-    .map((m) => ({
-      name: m.team !== team ? `[${m.team}] ${m.playerName}` : m.playerName,
-      content: m.content,
-    }));
+    .map((m) => {
+      const label = m.team !== team ? `${m.playerName} [opponent]` : `${m.playerName} [teammate]`;
+      return { name: label, content: m.content };
+    });
 
   const playerConfig = player.model
     ? { ...game.llmConfig, model: player.model }
@@ -293,8 +293,8 @@ async function runOnePlayer(
 
       if (action.type === 'hint') {
         try {
-          submitHint(gameId, team, player.id, action.word, action.count);
-          logInfo('runOnePlayer', `Hint submitted`, { gameId, team, playerId, word: action.word, count: action.count });
+          submitHint(gameId, team, player.id, action.word, action.count, action.targets);
+          logInfo('runOnePlayer', `Hint submitted`, { gameId, team, playerId, word: action.word, count: action.count, targets: action.targets });
         } catch (hintErr) {
           logWarn('runOnePlayer', `Hint submission failed`, { gameId, team, playerId, word: action.word, error: String(hintErr) });
           rejectedWords.push(action.word);
@@ -519,8 +519,8 @@ export async function runBanterRound(gameId: string): Promise<void> {
     return;
   }
 
-  const outOps = getTeamLlmPlayers(game, outgoingTeam).filter((p) => p.role === 'operative');
-  const inOps = getTeamLlmPlayers(game, incomingTeam).filter((p) => p.role === 'operative');
+  const outOps = getTeamLlmPlayers(game, outgoingTeam);
+  const inOps = getTeamLlmPlayers(game, incomingTeam);
 
   // B5: 2-3 back-and-forth exchanges across teams
   const exchanges: Array<{ team: TeamColor; players: Player[] }> = [
@@ -800,7 +800,7 @@ export async function runEndGameBanter(gameId: string): Promise<void> {
 
   for (let i = 0; i < teams.length; i++) {
     const { team, role } = teams[i];
-    const players = getTeamLlmPlayers(getGame(gameId), team).filter((p) => p.role === 'operative');
+    const players = getTeamLlmPlayers(getGame(gameId), team);
     if (players.length === 0) {
       logInfo('runEndGameBanter', `Skipping exchange - no players`, { gameId, team, role, exchangeIndex: i });
       continue;
@@ -809,7 +809,10 @@ export async function runEndGameBanter(gameId: string): Promise<void> {
     const speaker = pickRandom(players);
     const chatHistory = getGame(gameId).chatLog
       .slice(-20)
-      .map((m) => ({ name: m.playerName, content: m.content }));
+      .map((m) => {
+        const label = m.team !== team ? `${m.playerName} [opponent]` : `${m.playerName} [teammate]`;
+        return { name: label, content: m.content };
+      });
 
     const playerConfig = speaker.model
       ? { ...getGame(gameId).llmConfig, model: speaker.model }

@@ -4,7 +4,7 @@ export interface LlmResponse {
   message: string;
   action:
     | { type: 'none' }
-    | { type: 'hint'; word: string; count: number }
+    | { type: 'hint'; word: string; count: number; targets: string[] }
     | { type: 'propose_guess'; word: string }
     | { type: 'propose_end_turn' }
     | { type: 'vote'; proposalId: string; decision: 'accept' | 'reject' };
@@ -42,7 +42,10 @@ function parseResponse(data: unknown): LlmResponse {
   if (action.type === 'hint') {
     if (typeof action.word !== 'string' || !action.word.trim()) throw new Error('hint needs word');
     if (typeof action.count !== 'number' || action.count < 1) throw new Error('hint needs count >= 1');
-    return { message, action: { type: 'hint', word: action.word.trim(), count: Math.floor(action.count) } };
+    const targets = Array.isArray(action.targets)
+      ? (action.targets as unknown[]).filter((t): t is string => typeof t === 'string').map((t) => t.trim())
+      : [];
+    return { message, action: { type: 'hint', word: action.word.trim(), count: Math.floor(action.count), targets } };
   }
   if (action.type === 'propose_guess') {
     if (typeof action.word !== 'string' || !action.word.trim()) throw new Error('propose_guess needs word');
@@ -64,7 +67,7 @@ function parseResponse(data: unknown): LlmResponse {
 // Constants
 // ---------------------------------------------------------------------------
 
-const GAME_RULES = `## Codenames Rules
+const GAME_RULES = `## Clueless Rules
 Two teams (red & blue) compete to find their words on a shared board.
 Each turn: the spymaster gives a one-word hint + a number, then operatives discuss and guess.
 A guess reveals the word's owner: your team (good), other team (bad), neutral (ends turn), or assassin (instant loss).
@@ -78,7 +81,7 @@ Always respond with JSON: {"message": "your chat message", "action": {...}}
 
 Action types:
 - {"type": "none"} — just chat, no game action
-- {"type": "hint", "word": "WORD", "count": N} — spymaster gives a hint (hint phase only)
+- {"type": "hint", "word": "WORD", "count": N, "targets": ["WORD1", "WORD2"]} — spymaster gives a hint (hint phase only). targets = the board words you intend this hint for
 - {"type": "propose_guess", "word": "BOARD_WORD"} — propose guessing a word (guess phase, operatives)
 - {"type": "propose_end_turn"} — propose ending the turn (guess phase, operatives)
 - {"type": "vote", "proposalId": "ID", "decision": "accept"|"reject"} — vote on a pending proposal`;
@@ -89,7 +92,7 @@ Action types:
 
 function buildSystemPrompt(player: Player, team: TeamColor, personality: string): string {
   return [
-    `You are ${player.name}, playing Codenames on team ${team}. Role: ${player.role}.`,
+    `You are ${player.name}, playing Clueless on team ${team}. Role: ${player.role}.`,
     personality,
     '',
     GAME_RULES,
@@ -176,7 +179,9 @@ function buildSituation(input: {
 
   if (game.turn.phase === 'banter') {
     lines.push(`Previous team: ${game.turn.previousTeam ?? 'unknown'}, next team: ${game.turn.activeTeam}`);
-    lines.push('Banter phase: React to what just happened. Celebrate your team\'s reveals, trash-talk the other team. No strategy or hint discussion — just banter.');
+    const banterBase = 'Banter phase: React to what just happened. Celebrate your team\'s reveals, trash-talk the other team. No strategy or hint discussion — just banter.';
+    const banterExtra = player.role === 'spymaster' ? ' NEVER reveal or hint at which words belong to which team.' : '';
+    lines.push(banterBase + banterExtra);
   }
 
   // -- Hint phase: spymaster target/avoid lists --
@@ -234,7 +239,7 @@ export class LlmClient {
     const { game, player, team } = input;
 
     const personality = game.llmNeutralMode
-      ? 'You are a neutral, cooperative Codenames teammate focused on clear strategy and winning.'
+      ? 'You are a neutral, cooperative Clueless teammate focused on clear strategy and winning.'
       : (player.personality ?? 'You are a chill but competitive teammate.');
 
     const system = buildSystemPrompt(player, team, personality);

@@ -55,6 +55,7 @@ export interface GameState {
     phase: 'hint' | 'guess' | 'banter';
     hintWord?: string;
     hintCount?: number;
+    hintTargets?: string[];
     guessesMade: number;
     maxGuesses: number;
     previousTeam?: TeamColor;

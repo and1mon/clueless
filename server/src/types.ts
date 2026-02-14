@@ -32,6 +32,7 @@ export interface TurnState {
   phase: TurnPhase;
   hintWord?: string;
   hintCount?: number;
+  hintTargets?: string[];
   guessesMade: number;
   maxGuesses: number;
   previousTeam?: TeamColor;

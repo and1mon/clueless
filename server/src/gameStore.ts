@@ -255,7 +255,7 @@ export function postChatMessage(gameId: string, team: TeamColor, playerId: strin
 
 // --- Hints: spymaster gives them directly ---
 
-export function submitHint(gameId: string, team: TeamColor, playerId: string, word: string, count: number): GameState {
+export function submitHint(gameId: string, team: TeamColor, playerId: string, word: string, count: number, targets?: string[]): GameState {
   const game = getGame(gameId);
   assertTeamMember(game, team, playerId);
   if (game.winner) throw new Error('Game is over.');
@@ -273,6 +273,7 @@ export function submitHint(gameId: string, team: TeamColor, playerId: string, wo
   game.turn.phase = 'guess';
   game.turn.hintWord = hintWord;
   game.turn.hintCount = count;
+  game.turn.hintTargets = targets?.length ? targets : undefined;
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = count + 1;
 
@@ -295,6 +296,7 @@ function switchTurn(game: GameState): void {
   game.awaitingHumanContinuation.blue = false;
   game.turn.hintWord = undefined;
   game.turn.hintCount = undefined;
+  game.turn.hintTargets = undefined;
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = 0;
   addSystemMessage(game, game.turn.activeTeam, `It's now ${game.turn.activeTeam}'s turn.`);
