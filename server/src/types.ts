@@ -33,6 +33,7 @@ export interface TurnState {
   hintWord?: string;
   hintCount?: number;
   hintTargets?: string[];
+  hintReasoning?: string;
   guessesMade: number;
   maxGuesses: number;
 }

@@ -873,6 +873,9 @@ export function App(): JSX.Element {
                 {showSpyView && turn.hintTargets?.length ? (
                   <span className="hint-targets">targeting: {turn.hintTargets.join(', ')}</span>
                 ) : null}
+                {showSpyView && turn.hintReasoning ? (
+                  <span className="hint-reasoning">reasoning: {turn.hintReasoning}</span>
+                ) : null}
               </div>
             ) : (
               <div className="game-status">

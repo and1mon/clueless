@@ -562,6 +562,14 @@ body {
   font-weight: 600;
 }
 
+.hint-reasoning {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+}
+
 .winner { font-weight: 700; font-size: 1.1rem; }
 
 .new-game-btn {

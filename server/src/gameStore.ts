@@ -269,7 +269,7 @@ export function postChatMessage(gameId: string, team: TeamColor, playerId: strin
 
 // --- Hints: spymaster gives them directly ---
 
-export function submitHint(gameId: string, team: TeamColor, playerId: string, word: string, count: number, targets?: string[]): GameState {
+export function submitHint(gameId: string, team: TeamColor, playerId: string, word: string, count: number, targets?: string[], reasoning?: string): GameState {
   const game = getGame(gameId);
   assertTeamMember(game, team, playerId);
   if (game.winner) throw new Error('Game is over.');
@@ -288,6 +288,7 @@ export function submitHint(gameId: string, team: TeamColor, playerId: string, wo
   game.turn.hintWord = hintWord;
   game.turn.hintCount = count;
   game.turn.hintTargets = targets?.length ? targets : undefined;
+  game.turn.hintReasoning = reasoning || undefined;
   game.turn.guessesMade = 0;
   game.turn.maxGuesses = count + 1;
 

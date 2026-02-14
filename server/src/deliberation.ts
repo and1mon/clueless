@@ -208,8 +208,15 @@ async function runOnePlayer(
     : game.chatLog.filter((m) => m.team === team || m.phase === 'banter');
   const chatHistory = chatHistorySource
     .map((m) => {
-      const label = m.team !== team ? `${m.playerName} [opponent]` : `${m.playerName} [teammate]`;
-      return { name: label, content: m.content };
+      const mPlayer = game.players[m.playerId];
+      const isSpymaster = mPlayer?.role === 'spymaster';
+      let tag: string;
+      if (m.team !== team) {
+        tag = isSpymaster ? 'opponent spymaster' : 'opponent';
+      } else {
+        tag = isSpymaster ? 'your spymaster' : 'teammate';
+      }
+      return { name: `${m.playerName} [${tag}]`, content: m.content };
     });
 
   const playerConfig = player.model
@@ -294,8 +301,8 @@ async function runOnePlayer(
 
       if (action.type === 'hint') {
         try {
-          submitHint(gameId, team, player.id, action.word, action.count, action.targets);
-          logInfo('runOnePlayer', `Hint submitted`, { gameId, team, playerId, word: action.word, count: action.count, targets: action.targets });
+          submitHint(gameId, team, player.id, action.word, action.count, action.targets, action.reasoning);
+          logInfo('runOnePlayer', `Hint submitted`, { gameId, team, playerId, word: action.word, count: action.count, targets: action.targets, reasoning: action.reasoning });
         } catch (hintErr) {
           logWarn('runOnePlayer', `Hint submission failed`, { gameId, team, playerId, word: action.word, error: String(hintErr) });
           rejectedWords.push(action.word);

@@ -56,6 +56,7 @@ export interface GameState {
     hintWord?: string;
     hintCount?: number;
     hintTargets?: string[];
+    hintReasoning?: string;
     guessesMade: number;
     maxGuesses: number;
   };

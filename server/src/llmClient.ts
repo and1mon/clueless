@@ -4,7 +4,7 @@ export interface LlmResponse {
   message: string;
   action:
     | { type: 'none' }
-    | { type: 'hint'; word: string; count: number; targets: string[] }
+    | { type: 'hint'; word: string; count: number; targets: string[]; reasoning?: string }
     | { type: 'propose_guess'; word: string }
     | { type: 'propose_end_turn' }
     | { type: 'vote'; proposalId: string; decision: 'accept' | 'reject' };
@@ -45,7 +45,8 @@ function parseResponse(data: unknown): LlmResponse {
     const targets = Array.isArray(action.targets)
       ? (action.targets as unknown[]).filter((t): t is string => typeof t === 'string').map((t) => t.trim())
       : [];
-    return { message, action: { type: 'hint', word: action.word.trim(), count: Math.floor(action.count), targets } };
+    const reasoning = typeof action.reasoning === 'string' ? action.reasoning.trim() : undefined;
+    return { message, action: { type: 'hint', word: action.word.trim(), count: Math.floor(action.count), targets, reasoning } };
   }
   if (action.type === 'propose_guess') {
     if (typeof action.word !== 'string' || !action.word.trim()) throw new Error('propose_guess needs word');
@@ -68,11 +69,14 @@ function parseResponse(data: unknown): LlmResponse {
 // ---------------------------------------------------------------------------
 
 const GAME_RULES = `## Clueless Rules
-Two teams (red & blue) compete to find their words on a shared board.
-Each turn: the spymaster gives a one-word hint + a number, then operatives discuss and guess.
-A guess reveals the word's owner: your team (good), other team (bad), neutral (ends turn), or assassin (instant loss).
-Operatives propose guesses that the team votes on (majority wins). They can also propose ending the turn.
-Words have NO spatial positions on the board — there is no adjacency, "close to", or "next to".
+Two teams (red & blue) compete to find their team's words on a 25-word board.
+Each word is secretly assigned an owner: red, blue, neutral, or assassin. Only spymasters see the assignments.
+Words are independent — there is NO spatial layout, adjacency, or connection between words on the board.
+Neither team's operatives know which words belong to whom. The enemy team does NOT know your card colors either.
+
+Each turn the spymaster gives a one-word hint and a number. The number is how many board words the hint relates to.
+Operatives discuss, then propose guesses that the team votes on (majority wins). They can also propose ending the turn.
+Revealing a word shows its owner: your team (good — keep guessing), other team (bad — turn ends), neutral (turn ends), or assassin (instant loss).
 Spymasters act during the hint phase. Operatives act during the guess phase.
 During banter phase (between turns), everyone chats but nobody takes game actions.`;
 
@@ -81,7 +85,7 @@ Always respond with JSON: {"message": "your chat message", "action": {...}}
 
 Action types:
 - {"type": "none"} — just chat, no game action
-- {"type": "hint", "word": "WORD", "count": N, "targets": ["WORD1", "WORD2"]} — spymaster gives a hint (hint phase only). targets = the board words you intend this hint for
+- {"type": "hint", "word": "WORD", "count": N, "targets": ["WORD1", "WORD2"], "reasoning": "why this hint connects to your targets"} — spymaster gives a hint (hint phase only). targets = the board words you intend this hint for. reasoning = brief explanation of why this hint connects to those targets
 - {"type": "propose_guess", "word": "BOARD_WORD"} — propose guessing a word (guess phase, operatives)
 - {"type": "propose_end_turn"} — propose ending the turn (guess phase, operatives)
 - {"type": "vote", "proposalId": "ID", "decision": "accept"|"reject"} — vote on a pending proposal`;
@@ -180,7 +184,18 @@ function buildSituation(input: {
   if (game.turn.phase === 'banter') {
     const nextTeam = game.turn.activeTeam === 'red' ? 'blue' : 'red';
     lines.push(`Team ${game.turn.activeTeam} just finished. Next up: ${nextTeam}`);
-    const banterBase = 'Banter phase: React to what just happened. Celebrate your team\'s reveals, trash-talk the other team. No strategy or hint discussion — just banter.';
+
+    // Tell players who the spymaster was so they can react to hint quality
+    const outgoingTeam = game.turn.activeTeam;
+    const outgoingSm = Object.values(game.players).find(
+      (p) => p.team === outgoingTeam && p.role === 'spymaster',
+    );
+    if (outgoingSm) {
+      const smLabel = outgoingSm.team === team ? 'your spymaster' : `${outgoingTeam}'s spymaster`;
+      lines.push(`${outgoingSm.name} was ${smLabel} this turn.`);
+    }
+
+    const banterBase = 'Banter phase: React to what just happened — the hints given, the guesses made, how the spymaster did. Trash-talk opponents, hype or roast teammates. No strategy discussion or hints about unrevealed words.';
     const banterExtra = player.role === 'spymaster' ? ' NEVER reveal or hint at which words belong to which team.' : '';
     lines.push(banterBase + banterExtra);
   }
@@ -194,9 +209,12 @@ function buildSituation(input: {
     const allBoardWords = game.cards.map((c) => c.word.toLowerCase());
 
     lines.push(`Your team's words (target these): ${myWords.join(', ')}`);
-    lines.push(`Enemy words (avoid): ${enemyWords.join(', ')}`);
-    lines.push(`Assassin (instant loss if guessed): ${assassinWords.join(', ')}`);
-    lines.push(`Your hint CANNOT be any board word: ${allBoardWords.join(', ')}`);
+    lines.push(`Enemy words (AVOID — guessing these helps the enemy): ${enemyWords.join(', ')}`);
+    lines.push(`Assassin (AVOID — guessing this means instant loss): ${assassinWords.join(', ')}`);
+    lines.push(`Your hint must be a SINGLE word that is NOT any word on the board: ${allBoardWords.join(', ')}`);
+    const neutralWords = game.cards.filter((c) => c.owner === 'neutral' && !c.revealed).map((c) => c.word);
+    lines.push(`Neutral words (guessing these wastes your turn): ${neutralWords.join(', ')}`);
+    lines.push(`HINT STRATEGY: First, brainstorm a hint that connects 2-3 of YOUR team's words. Then CROSS-CHECK: does this hint also relate to any enemy word, assassin word, or neutral word? If yes, DISCARD it and pick a safer hint. For example "fire" is bad if the enemy has "phoenix". A safe 2-word hint beats a risky 3-word hint. Set count = only the words your hint truly fits.`);
   }
 
   // -- Guess phase info --
