@@ -106,14 +106,18 @@ export class LlmClient {
         : 'Game over — you lost. React to it.';
     } else if (isBanterPhase) {
       const isOutgoing = game.turn.previousTeam === team;
+      const opponentTeam = team === 'red' ? 'blue' : 'red';
       roleInstructions = [
         'Banter phase is intermission between turns.',
         `You are on team ${team}.`,
+        `You are NOT on team ${opponentTeam}. Never speak as if you are ${opponentTeam}.`,
         `Team that just finished: ${game.turn.previousTeam ?? 'unknown'}.`,
         `Team that plays next after banter: ${game.turn.activeTeam}.`,
         isOutgoing ? 'Your team just finished its turn.' : 'Your team is up next after banter.',
+        'If prior chat lines are prefixed with team labels, treat your own team label as your perspective and the other team as opponents.',
         'Do NOT hint, guess, propose, or vote in banter.',
         'Do NOT reference unrevealed board words like you are guessing.',
+        'Use recent round events from chat (reveals, rejected proposals, bad guesses) for taunts/reactions.',
         'Keep it to light reaction/taunt and momentum talk.',
         'action: {"type":"none"}',
       ].join('\n');
@@ -193,7 +197,9 @@ export class LlmClient {
       '- PRIMARY GOAL: win the game, not roleplay the personality.',
       '- Personality is flavor only. Be flexible and compromise when needed to keep team momentum.',
       '- Codenames has no board adjacency mechanics: never justify decisions with "near/close/next to" claims.',
+      '- Never treat your own previous message as if it was written by another speaker.',
       '- You MUST directly respond to or reference what the previous speaker said before adding your own thoughts.',
+      '- When replying to a teammate/opponent, address them directly in second person ("you"), not third person ("they"/name).',
       '- If you agree, say so briefly ("yeah", "totally", "good call"). If you disagree, explain why in one sentence.',
       '- Do NOT repeat information that was just stated by someone else.',
       '- Keep it short: 1-2 sentences max. Only go longer if you have a genuinely new strategic insight.',
@@ -246,9 +252,10 @@ export class LlmClient {
       : `Board: ${visibleCards}`;
 
     const stateContext = [
-      lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}"` : '',
+      lastOtherMsg ? `[RESPOND TO THIS] ${lastOtherMsg.name} just said: "${lastOtherMsg.content}". Reply directly to that speaker using "you".` : '',
       `[GAME STATE] Team: ${team} | Your role: ${player.role} | Turn: ${game.turn.activeTeam}/${game.turn.phase}`,
       isBanterPhase ? `[BANTER STATE] Previous team: ${game.turn.previousTeam ?? 'unknown'} | Next team: ${game.turn.activeTeam}` : '',
+      isBanterPhase ? `[BANTER TEAM CHECK] You=${team}; Opponent=${team === 'red' ? 'blue' : 'red'}` : '',
       `Score: Red ${remainingRed} left, Blue ${remainingBlue} left`,
       boardContext,
       `Pending proposals:\n${proposalLines}`,

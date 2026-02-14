@@ -144,6 +144,8 @@ export function App(): JSX.Element {
   const [showRetryPrompt, setShowRetryPrompt] = useState(false);
   const lastMsgCount = useRef(0);
   const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thinkingBubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [thinkingBubbleGrace, setThinkingBubbleGrace] = useState(false);
   const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
 
   // TTS state
@@ -290,6 +292,16 @@ export function App(): JSX.Element {
     if (ttsReady > 0) tryAdvanceDisplay();
   }, [ttsReady, tryAdvanceDisplay]);
 
+  // End-game catch-up: keep trying to reveal/play any buffered final messages in TTS mode.
+  useEffect(() => {
+    if (!ttsEnabled || !game?.winner) return;
+    const timer = setInterval(() => {
+      processTtsQueue();
+      tryAdvanceDisplay();
+    }, 300);
+    return () => clearInterval(timer);
+  }, [ttsEnabled, game?.winner, game?.chatLog.length, processTtsQueue, tryAdvanceDisplay]);
+
   // Generate TTS for new chat messages with A4: concurrency-limited queue
   useEffect(() => {
     if (!game || !ttsEnabled || ttsLoading) return;
@@ -336,7 +348,34 @@ export function App(): JSX.Element {
 
   // A5: Show thinking bubble when server is deliberating OR when TTS has buffered unrevealed messages
   const hasTtsBuffer = ttsEnabled && game ? displayUpTo.current < game.chatLog.length : false;
-  const showThinking = isThinking || hasTtsBuffer;
+  const showThinkingRaw = isThinking || hasTtsBuffer;
+  const showThinking = showThinkingRaw || thinkingBubbleGrace;
+
+  // Keep thinking bubble visible briefly to bridge polling gaps between LLM messages.
+  useEffect(() => {
+    if (thinkingBubbleTimer.current) {
+      clearTimeout(thinkingBubbleTimer.current);
+      thinkingBubbleTimer.current = null;
+    }
+    if (game?.winner) {
+      setThinkingBubbleGrace(false);
+      return;
+    }
+    if (showThinkingRaw) {
+      setThinkingBubbleGrace(true);
+      return;
+    }
+    thinkingBubbleTimer.current = setTimeout(() => {
+      setThinkingBubbleGrace(false);
+      thinkingBubbleTimer.current = null;
+    }, 1800);
+    return () => {
+      if (thinkingBubbleTimer.current) {
+        clearTimeout(thinkingBubbleTimer.current);
+        thinkingBubbleTimer.current = null;
+      }
+    };
+  }, [showThinkingRaw, game?.winner]);
 
   // When TTS is enabled, show thinking bubble for the team of the next unrevealed message
   const thinkingTeam = useMemo(() => {

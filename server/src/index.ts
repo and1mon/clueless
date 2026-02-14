@@ -7,6 +7,7 @@ import {
   hasHumanPlayer,
   postChatMessage,
   serializeGame,
+  setAwaitingHumanContinuation,
   submitHint,
   voteOnProposal,
 } from './gameStore.js';
@@ -102,6 +103,7 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
 // C3: Use fireAndForget for background LLM actions
 function afterHumanAction(gameId: string, team: TeamColor): void {
   logServer('INFO', 'afterHumanAction', `Triggered`, { gameId, team });
+  setAwaitingHumanContinuation(gameId, team, false);
   fireAndForget(async () => {
     const game = getGame(gameId);
     if (game.winner) {
@@ -117,6 +119,11 @@ function afterHumanAction(gameId: string, team: TeamColor): void {
     if (!updated.winner && updated.turn.activeTeam === team) {
       logServer('INFO', 'afterHumanAction', `Running teammate round`, { gameId, team });
       await runTeammateRound(gameId, team);
+    }
+    const postRound = getGame(gameId);
+    if (postRound.awaitingHumanContinuation[team]) {
+      logServer('INFO', 'afterHumanAction', `Paused for human continuation`, { gameId, team });
+      return;
     }
     logServer('INFO', 'afterHumanAction', `Running autoplay`, { gameId });
     await autoplayIfNeeded(gameId);

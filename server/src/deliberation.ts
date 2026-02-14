@@ -8,6 +8,7 @@ import {
   hasHumanPlayer,
   otherTeam,
   postChatMessage,
+  setAwaitingHumanContinuation,
   setDeliberating,
   setLlmError,
   submitHint,
@@ -46,6 +47,7 @@ interface TeamTurnState {
   locked: boolean;
   failures: number;
   proposedWords: Set<string>;
+  lastSpeakerId?: string;
 }
 
 const teamStates = new Map<string, TeamTurnState>();
@@ -84,6 +86,7 @@ function resetTurnCounters(gameId: string, team: TeamColor): void {
   const s = getTeamState(gameId, team);
   s.failures = 0;
   s.proposedWords.clear();
+  s.lastSpeakerId = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,8 +157,10 @@ async function runOnePlayer(
   logInfo('runOnePlayer', `Starting player turn`, { gameId, team, playerId, playerName: player.name, role: player.role, phase: game.turn.phase });
 
   const pending = game.proposals[team].filter((p) => p.status === 'pending');
-  const chatHistory = game.chatLog
-    .filter((m) => m.team === team || m.phase === 'banter')
+  const chatHistorySource = isBanter
+    ? game.chatLog.slice(-60)
+    : game.chatLog.filter((m) => m.team === team || m.phase === 'banter');
+  const chatHistory = chatHistorySource
     .map((m) => ({
       name: m.team !== team ? `[${m.team}] ${m.playerName}` : m.playerName,
       content: m.content,
@@ -250,6 +255,16 @@ async function runOnePlayer(
       } else {
         if (response.message && response.message !== '...') {
           postChatMessage(gameId, team, player.id, response.message);
+          getTeamState(gameId, team).lastSpeakerId = player.id;
+          if (
+            game.turn.phase === 'guess'
+            && game.turn.activeTeam === team
+            && player.role === 'operative'
+            && hasHumanPlayer(game, team)
+          ) {
+            setAwaitingHumanContinuation(gameId, team, true);
+            logInfo('runOnePlayer', `Waiting for human continuation`, { gameId, team, playerId });
+          }
         }
 
         if (action.type === 'propose_guess') {
@@ -325,6 +340,13 @@ async function runConversationRound(
 
   // B3: Shuffle speaking order each round
   const speakers = shuffle(llmPlayers);
+  const lastSpeakerId = getTeamState(gameId, team).lastSpeakerId;
+  if (lastSpeakerId && speakers.length > 1 && speakers[0]?.id === lastSpeakerId) {
+    const alternativeIndex = speakers.findIndex((p) => p.id !== lastSpeakerId);
+    if (alternativeIndex > 0) {
+      [speakers[0], speakers[alternativeIndex]] = [speakers[alternativeIndex], speakers[0]];
+    }
+  }
   // Track who already spoke this round to prevent double-speaking
   const spokePlayers = new Set<string>();
 
@@ -345,6 +367,10 @@ async function runConversationRound(
     logInfo('runConversationRound', `Waiting for TTS ack`, { gameId, team, playerId: player.id });
     await waitForTtsAck(gameId);
     logInfo('runConversationRound', `TTS ack received`, { gameId, team, playerId: player.id });
+    if (getGame(gameId).awaitingHumanContinuation[team]) {
+      logInfo('runConversationRound', `Pausing round for human continuation`, { gameId, team, playerId: player.id });
+      return true;
+    }
 
     // B4: If a proposal was just created, let remaining players vote (once each)
     const current = getGame(gameId);
@@ -368,6 +394,10 @@ async function runConversationRound(
         logInfo('runConversationRound', `Waiting for TTS ack (voter)`, { gameId, team, voterId: voter.id });
         await waitForTtsAck(gameId);
         logInfo('runConversationRound', `TTS ack received (voter)`, { gameId, team, voterId: voter.id });
+        if (getGame(gameId).awaitingHumanContinuation[team]) {
+          logInfo('runConversationRound', `Pausing round for human continuation after vote`, { gameId, team, voterId: voter.id });
+          return true;
+        }
       }
     }
 
@@ -401,7 +431,11 @@ async function runRevealReaction(gameId: string, team: TeamColor): Promise<void>
   }
 
   // Pick 1 random operative to react
-  const reactor = pickRandom(operatives);
+  const lastSpeakerId = getTeamState(gameId, team).lastSpeakerId;
+  const candidates = lastSpeakerId && operatives.length > 1
+    ? operatives.filter((p) => p.id !== lastSpeakerId)
+    : operatives;
+  const reactor = pickRandom(candidates.length > 0 ? candidates : operatives);
   setDeliberating(gameId, team, true);
   try {
     await runOnePlayer(gameId, team, reactor.id);

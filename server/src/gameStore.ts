@@ -183,6 +183,7 @@ export function createGame(input: CreateGameInput): GameState {
       apiKey: input.llm?.apiKey?.trim() || DEFAULT_LLM.apiKey,
     },
     deliberating: { red: false, blue: false },
+    awaitingHumanContinuation: { red: false, blue: false },
   };
 
   games.set(id, game);
@@ -288,6 +289,8 @@ function switchTurn(game: GameState): void {
   game.turn.activeTeam = otherTeam(previousTeam);
   game.turn.phase = 'banter';
   game.turn.previousTeam = previousTeam;
+  game.awaitingHumanContinuation.red = false;
+  game.awaitingHumanContinuation.blue = false;
   game.turn.hintWord = undefined;
   game.turn.hintCount = undefined;
   game.turn.guessesMade = 0;
@@ -458,6 +461,11 @@ export function voteOnProposal(
 export function setDeliberating(gameId: string, team: TeamColor, value: boolean): void {
   const game = getGame(gameId);
   game.deliberating[team] = value;
+}
+
+export function setAwaitingHumanContinuation(gameId: string, team: TeamColor, value: boolean): void {
+  const game = getGame(gameId);
+  game.awaitingHumanContinuation[team] = value;
 }
 
 export function setLlmError(gameId: string, message: string): void {

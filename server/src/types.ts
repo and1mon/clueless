@@ -80,6 +80,7 @@ export interface GameState {
   loserReason?: string;
   llmConfig: LlmConfig;
   deliberating: Record<TeamColor, boolean>;
+  awaitingHumanContinuation: Record<TeamColor, boolean>;
   llmError?: string;
   gameOverBanter?: boolean;
 }
