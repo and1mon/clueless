@@ -262,6 +262,13 @@ export function App(): JSX.Element {
     import('./ttsService').then(({ disposeTTS }) => disposeTTS());
   }, []);
 
+  const resetTts = useCallback(() => {
+    setTtsEnabled(false);
+    setTtsLoading(false);
+    stopAudio();
+    cleanupTts();
+  }, [stopAudio, cleanupTts]);
+
   // Clean up TTS blob URLs and worker on unmount
   useEffect(() => {
     return () => cleanupTts();
@@ -364,8 +371,9 @@ export function App(): JSX.Element {
     if (game?.llmError) {
       setError(`⚠️ ${game.llmError}. Check your LLM configuration and try again.`);
       setGame(null);
+      resetTts();
     }
-  }, [game?.llmError]);
+  }, [game?.llmError, resetTts]);
 
   // Stale detection: auto-nudge LLM if no new messages after 60s
   const isThinking = game ? (game.deliberating.red || game.deliberating.blue) : false;
@@ -462,6 +470,7 @@ export function App(): JSX.Element {
     setGame(null);
     gameSnapshots.current.clear();
     setError('');
+    resetTts();
   };
 
   // Compute LLM counts from teamSize + human placement

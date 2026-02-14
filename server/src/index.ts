@@ -5,10 +5,12 @@ import {
   createProposal,
   getGame,
   hasHumanPlayer,
+  isAbandoned,
   postChatMessage,
   serializeGame,
   setAwaitingHumanContinuation,
   submitHint,
+  touchGame,
   voteOnProposal,
 } from './gameStore.js';
 import { runFullLlmTurn, runTeammateRound, autoSpymasterHint, runBanterRound, runEndGameBanter, fireAndForget } from './deliberation.js';
@@ -43,8 +45,8 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
   const maxAutoplayTurns = 100;
   for (let i = 0; i < maxAutoplayTurns; i += 1) {
     const current = getGame(gameId);
-    if (current.winner) {
-      logServer('INFO', 'autoplayIfNeeded', `Game has winner, stopping loop`, { gameId, winner: current.winner, iteration: i });
+    if (current.winner || isAbandoned(gameId)) {
+      logServer('INFO', 'autoplayIfNeeded', `Game ended or abandoned, stopping loop`, { gameId, winner: current.winner, abandoned: isAbandoned(gameId), iteration: i });
       break;
     }
 
@@ -133,6 +135,7 @@ app.post('/api/games', (req, res) => {
 
 app.get('/api/games/:gameId', (req, res) => {
   try {
+    touchGame(req.params.gameId);
     res.json(serializeGame(getGame(req.params.gameId)));
   } catch (error) {
     res.status(404).json({ error: error instanceof Error ? error.message : 'Unknown error' });

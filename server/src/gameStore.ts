@@ -12,6 +12,19 @@ import {
 
 const games = new Map<string, GameState>();
 
+// Track last client poll per game (not serialized, not on GameState)
+const lastClientPoll = new Map<string, number>();
+
+export function touchGame(gameId: string): void {
+  lastClientPoll.set(gameId, Date.now());
+}
+
+export function isAbandoned(gameId: string): boolean {
+  const last = lastClientPoll.get(gameId);
+  if (!last) return false; // never polled = just created
+  return Date.now() - last > 15_000; // 15s ≈ 10 missed polls
+}
+
 const VOICE_POOL = [
   'af_heart', 'af_bella', 'af_aoede', 'af_kore', 'af_sarah', 'af_sky',
   'am_fenrir', 'am_michael', 'am_puck', 'am_adam', 'am_eric',
@@ -189,6 +202,7 @@ export function createGame(input: CreateGameInput): GameState {
   };
 
   games.set(id, game);
+  touchGame(id);
   return game;
 }
 

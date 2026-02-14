@@ -6,6 +6,7 @@ import {
   getSpymaster,
   getTeamLlmPlayers,
   hasHumanPlayer,
+  isAbandoned,
   otherTeam,
   postChatMessage,
   setAwaitingHumanContinuation,
@@ -116,7 +117,7 @@ function pickRandom<T>(arr: T[]): T {
 }
 
 function isGameOver(gameId: string): boolean {
-  return !!getGame(gameId).winner;
+  return !!getGame(gameId).winner || isAbandoned(gameId);
 }
 
 function isStillActiveTeam(gameId: string, team: TeamColor): boolean {
