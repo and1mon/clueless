@@ -1217,19 +1217,17 @@ export function App(): JSX.Element {
               return (
                 <div className="chat-input paused with-guess">
                   <input
-                    placeholder="Your turn — say something or pick a word!"
+                    placeholder={guessWord ? 'Add reasoning (optional)… Enter to propose' : 'Say something or click a card…'}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { guessWord ? proposeGuess() : sendChat(); } }}
                   />
-                  <input
-                    className="guess-input"
-                    placeholder="Guess word (or click board)"
-                    value={guessWord}
-                    onChange={(e) => setGuessWord(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') proposeGuess(); }}
-                  />
-                  <button onClick={() => proposeGuess()} title="Propose guess">Propose</button>
+                  {guessWord ? (
+                    <>
+                      <button onClick={() => proposeGuess()} title={`Propose guessing ${guessWord}`}>Propose "{guessWord}"</button>
+                      <button onClick={() => setGuessWord('')} className="secondary" title="Deselect card">✕</button>
+                    </>
+                  ) : null}
                   <button onClick={proposeEndTurn} className="secondary" title="End your turn">End Turn</button>
                   <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
                 </div>

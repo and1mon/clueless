@@ -171,8 +171,7 @@ app.post('/api/games/:gameId/chat', (req, res) => {
     const team = parseTeam(req.body.team);
     const game = postChatMessage(req.params.gameId, team, req.body.playerId, req.body.content);
     res.json(serializeGame(game));
-    // If the human is in the round-robin cycle and it's their turn (paused),
-    // chatting counts as taking their turn and resumes LLM discussion.
+    // Chatting counts as taking the human's turn — resume LLM discussion
     if (game.humanPaused[team] && !game.winner && game.turn.activeTeam === team && game.turn.phase === 'guess') {
       afterHumanAction(game.id, team);
     }

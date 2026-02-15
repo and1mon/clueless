@@ -448,9 +448,33 @@ async function runConversationRound(
     if (spokePlayers.has(player.id)) continue;
 
     // If it's the human's turn, pause and wait for their input
+    // But skip if there's a pending proposal or the human already spoke (chat/proposal since last pause)
     if (player.type === 'human') {
+      const currentGame = getGame(gameId);
+      const pendingBeforeHuman = currentGame.proposals[team].filter((p) => p.status === 'pending');
+      if (pendingBeforeHuman.length > 0) {
+        logInfo('runConversationRound', `Skipping human turn — pending proposal needs votes`, { gameId, team, playerId: player.id });
+        spokePlayers.add(player.id);
+        continue;
+      }
+      // Check if human already spoke since the last "It's your turn" message
+      const log = currentGame.chatLog;
+      let humanSpokeSinceLastPause = false;
+      for (let i = log.length - 1; i >= 0; i--) {
+        const msg = log[i];
+        if (msg.kind !== 'chat' && msg.content === "It's your turn") break;
+        if (msg.playerId === player.id && msg.kind === 'chat') {
+          humanSpokeSinceLastPause = true;
+          break;
+        }
+      }
+      if (humanSpokeSinceLastPause) {
+        logInfo('runConversationRound', `Skipping human turn — already spoke via chat`, { gameId, team, playerId: player.id });
+        spokePlayers.add(player.id);
+        continue;
+      }
       logInfo('runConversationRound', `Human's turn to speak`, { gameId, team, playerId: player.id, playerName: player.name });
-      postSystemMessage(gameId, team, `${player.name}, what do you think?`);
+      postSystemMessage(gameId, team, "It's your turn");
       setHumanPaused(gameId, team, true);
       return true;
     }
@@ -484,12 +508,6 @@ async function runConversationRound(
           // The voter whose vote resolved the proposal only voted — let them speak next round
           if (!check.winner && check.turn.activeTeam === team && check.turn.phase === 'guess') {
             spokePlayers.delete(voter.id);
-            const human = getHumanPlayer(check, team);
-            if (human && human.role === 'operative') {
-              logInfo('runConversationRound', `Pausing after proposal resolved for human`, { gameId, team, proposalId: proposal.id });
-              setHumanPaused(gameId, team, true);
-              return true;
-            }
             logInfo('runConversationRound', `Proposal resolved, ending round — voters get fresh turn`, { gameId, team, proposalId: proposal.id });
             return true;
           }

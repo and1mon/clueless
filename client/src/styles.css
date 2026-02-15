@@ -1139,7 +1139,7 @@ button.reject { background: var(--red); color: #fff; }
 }
 
 .chat-input.with-guess input.guess-input {
-  max-width: 11rem;
+  min-width: 14rem;
   flex: 0 1 auto;
 }
 
