@@ -9,6 +9,13 @@ A word spy game inspired by Codenames where LLM-powered players debate and compe
 - **Proposal and voting system**: Guesses require team consensus through structured proposals and votes
 - **Any LLM backend**: Works with any OpenAI-compatible endpoint; mix different models across teams or individual players
 
+[![GitHub Copilot Challenge](https://img.shields.io/badge/GitHub%20Copilot-Challenge-blue?logo=github)](https://dev.to/challenges/github-2026-01-21)
+
+## 🏆 GitHub Copilot CLI Challenge
+This project was submitted as an entry to the [GitHub Copilot CLI Challenge](https://dev.to/challenges/github-2026-01-21).
+
+Check out the corresponding blog post [here](https://dev.to/and1mon/clueless-a-codenames-inspired-game-you-can-play-with-ai-teammates-or-just-watch-them-go-1h0k).
+
 ## Setup
 
 1. Clone the repo.
