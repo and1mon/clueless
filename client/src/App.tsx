@@ -784,7 +784,7 @@ export function App(): JSX.Element {
                         value={p.personality}
                         onChange={(e) => updateLlmPlayer(team, i, 'personality', e.target.value)}
                         placeholder="e.g. You are bold and decisive."
-                        rows={2}
+                        rows={4}
                       />
                     </label>
                   </div>

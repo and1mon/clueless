@@ -1,68 +1,81 @@
 # Clueless
 
-A word spy game inspired by Codenames where LLM-powered players debate and compete on teams. Play as a spymaster or operative alongside AI teammates, or spectate a fully autonomous match.
+A word spy game inspired by Codenames where LLM-powered players debate and compete on teams.
 
-## Stack
-
-- **Frontend:** React, Vite, TypeScript
-- **Backend:** Node.js, Express, TypeScript
-- **LLM:** Any OpenAI-compatible chat completions endpoint
-- **TTS:** Optional text-to-speech for voiced player dialogue
+- **Play or spectate**: Take the role of spymaster or operative alongside AI teammates, or watch a fully autonomous AI vs AI match
+- **Distinct AI personalities**: 20 character types from The Hothead to The Overthinker that genuinely shape how each player reasons and argues
+- **TTS Output**: Optional text-to-speech with Kokoro for immersive voiced dialogue
+- **Real deliberation**: AI players don't just guess; they debate interpretations, disagree, change their minds, and build on each other's ideas
+- **Proposal and voting system**: Guesses require team consensus through structured proposals and votes
+- **Any LLM backend**: Works with any OpenAI-compatible endpoint; mix different models across teams or individual players
 
 ## Setup
 
-Create a `.env` file in the project root:
+1. Clone the repo.
+
+2. Create `.env`:
 
 ```env
-LLM_BASE_URL=http://localhost:8082/v1
+LLM_BASE_URL=your-llm-base-url
 LLM_MODEL=your-model-name
 LLM_API_KEY=your-api-key
-PORT=3001
 ```
 
-| Variable | Description |
-|---|---|
-| `LLM_BASE_URL` | Base URL of your OpenAI-compatible endpoint |
-| `LLM_MODEL` | Model name to use |
-| `LLM_API_KEY` | API key, if your endpoint requires one |
-| `PORT` | Server port |
-
-Then install and run:
+3. Run:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Frontend at `http://localhost:5173`, API at `http://localhost:3001`.
+4. Visit `http://localhost:5173` to play or spectate!
 
-These defaults can also be overridden per-team or per-player in the game creation UI.
+---
 
-## Game overview
+## How It Works
 
-Two teams (red and blue) compete to uncover their team's words on a shared 25-word board. Each word is secretly assigned to red, blue, neutral, or assassin. Only spymasters see the assignments.
+Two teams compete to find their words on a 25-word board. **Spymasters** give one-word hints, **operatives** discuss and vote on guesses. Hit your words to continue, hit opponent's or neutral to end turn, hit assassin to lose.
 
-**Spymaster** gives a one-word hint and a number indicating how many board words it relates to. **Operatives** discuss, propose guesses, and vote as a team. Guessing correctly lets the team continue; hitting the other team's word or a neutral ends the turn; hitting the assassin loses the game instantly.
+![Setup Screen](demo/Start.png)
+*Choose role, join team, configure AI personalities*
 
-## Modes
+---
 
-- **Play as spymaster** -- you give the hints, AI teammates guess
-- **Play as operative** -- AI spymaster hints, you guess with AI teammates
-- **Spectator** -- watch a full AI-vs-AI match with card visibility and spymaster reasoning
+## Game Modes
 
-## Project structure
+### 🕵️ Spymaster
+You give hints, AI guesses.
 
-```
-server/
-  src/
-    index.ts          Express API and SSE event stream
-    gameStore.ts      Game state, card assignment, proposals, voting
-    deliberation.ts   LLM turn orchestration and conversation rounds
-    llmClient.ts      Prompt engineering, LLM request/response handling
-    words.ts          Board word pool
-    types.ts          Shared type definitions
-client/
-  src/
-    App.tsx           Main UI component
-    types.ts          Client-side types
-```
+![Spymaster Board](demo/Spymaster_Board.png)
+*Colored borders show card ownership*
+
+### 🎯 Operative
+AI gives hints, you guess with AI teammates.
+
+![Operative Board](demo/Operative_Board.png)
+
+**Make proposals:**
+
+Proposal:
+
+![Suggestion Input](demo/Suggestion_Input.png)
+
+Chat:
+
+![Suggestion Chat](demo/Suggestion_Chat.png)
+
+**Vote on proposals:**
+
+Vote:
+
+![Accept Input](demo/Accepted_Input.png)
+
+Chat:
+
+![Accept Chat](demo/Accepted_Chat.png)
+
+### 👁️ Spectator
+
+Watch AI vs AI with full visibility.
+
+Click [here](https://www.youtube.com/watch?v=dO0b7Gf278s) to see an example match played by Gemini-3-Flash with TTS enabled.
