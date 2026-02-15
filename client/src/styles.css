@@ -430,7 +430,26 @@ body {
   .team-models { grid-template-columns: 1fr; }
 }
 
-.error { color: #ef4444; font-size: 0.9rem; margin: 0.5rem 1rem; }
+.error-toast {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--bg-card, #1e1e2e);
+  color: #f87171;
+  border: 1px solid #ef444466;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.25s ease-out;
+  pointer-events: none;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-0.5rem); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 
 .theme-toggle {
   background: none;
@@ -663,6 +682,24 @@ body {
   color: var(--muted);
 }
 
+.spymaster-badge {
+  padding: 0.2rem 0.7rem;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.spymaster-badge.red {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.spymaster-badge.blue {
+  background: var(--blue-bg);
+  color: var(--blue);
+}
+
 .actions {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
@@ -682,6 +719,43 @@ body {
 @keyframes pulse-prompt {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+.actions.spymaster-hint-active {
+  border-left: 4px solid var(--primary);
+  background: var(--bg);
+}
+
+.actions.spymaster-hint-active.team-red {
+  border-left-color: var(--red);
+  background: var(--red-subtle);
+}
+
+.actions.spymaster-hint-active.team-blue {
+  border-left-color: var(--blue);
+  background: var(--blue-subtle);
+}
+
+.spymaster-waiting {
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-style: italic;
+  padding: 0.4rem 0;
+}
+
+.banter-note {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  padding: 0.5rem 0.75rem;
+  background: var(--primary-bg);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+}
+
+.chat-input.banter-active {
+  border-top: 2px solid var(--primary);
+  background: var(--primary-bg);
 }
 
 .action-row {

@@ -9,6 +9,7 @@ import {
   hasHumanPlayer,
   otherTeam,
   postChatMessage,
+  postSystemMessage,
   setDeliberating,
   setHumanPaused,
   setLlmError,
@@ -729,6 +730,9 @@ export async function autoSpymasterHint(gameId: string, team: TeamColor): Promis
 
   const spymaster = getSpymaster(game, team);
   if (!spymaster || spymaster.type !== 'llm') {
+    if (spymaster?.type === 'human') {
+      postSystemMessage(gameId, team, `${spymaster.name}, it's your turn to give a hint!`);
+    }
     logInfo('autoSpymasterHint', `Skipped - no LLM spymaster`, { gameId, team });
     return;
   }

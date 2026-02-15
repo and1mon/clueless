@@ -82,6 +82,7 @@ export function App(): JSX.Element {
   const [game, setGameRaw] = useState<GameState | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
   const [guessWord, setGuessWord] = useState('');
   const [hintWord, setHintWord] = useState('');
@@ -123,6 +124,15 @@ export function App(): JSX.Element {
   });
 
   const isSpectator = setup.humanRole === 'spectator';
+
+  // Auto-dismiss errors after 4 seconds
+  useEffect(() => {
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    if (error) {
+      errorTimerRef.current = setTimeout(() => setError(''), 4000);
+    }
+    return () => { if (errorTimerRef.current) clearTimeout(errorTimerRef.current); };
+  }, [error]);
 
   // Apply theme
   useEffect(() => {
@@ -169,6 +179,7 @@ export function App(): JSX.Element {
   const thinkingBubbleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [thinkingBubbleGrace, setThinkingBubbleGrace] = useState(false);
   const [hoveredPlayer, setHoveredPlayer] = useState<string | null>(null);
+  const [banterActed, setBanterActed] = useState(false);
 
   // TTS state
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -352,6 +363,12 @@ export function App(): JSX.Element {
         continue;
       }
       const player = game.players[msg.playerId];
+      // Skip TTS for human player messages — show them immediately
+      if (player?.type === 'human') {
+        ttsFailed.current.add(msg.id);
+        ttsStartIdx.current = i + 1;
+        continue;
+      }
       const isAction = msg.kind !== 'chat';
       const voice = isAction ? 'bf_emma' : (player?.voice || 'af_heart');
       const content = isAction ? systemTextToSpeech(msg.content) : msg.content;
@@ -365,6 +382,15 @@ export function App(): JSX.Element {
     // Also try to advance in case new system messages appeared
     tryAdvanceDisplay();
   }, [game?.chatLog.length, ttsEnabled, ttsLoading, tryAdvanceDisplay, processTtsQueue]);
+
+  // Reset banter-acted flag only when a NEW banter phase starts (not when leaving one)
+  const prevPhase = useRef(game?.turn.phase);
+  useEffect(() => {
+    if (game && game.turn.phase === 'banter' && prevPhase.current !== 'banter') {
+      setBanterActed(false);
+    }
+    prevPhase.current = game?.turn.phase;
+  }, [game?.turn.phase]);
 
   // Detect LLM config errors and go back to setup
   useEffect(() => {
@@ -670,6 +696,17 @@ export function App(): JSX.Element {
     } catch { /* ignore */ }
   };
 
+  const banterAction = async (action: 'start' | 'skip'): Promise<void> => {
+    if (!game) return;
+    setBanterActed(true);
+    try {
+      await apiRequest(`/api/games/${game.id}/banter-action`, {
+        method: 'POST',
+        body: JSON.stringify({ action }),
+      });
+    } catch (err) { setError((err as Error).message); }
+  };
+
   const pauseLlm = async (): Promise<void> => {
     if (!game) return;
     try {
@@ -817,7 +854,7 @@ export function App(): JSX.Element {
 
           <button disabled={loading} type="submit">{loading ? 'Starting…' : 'Start Game'}</button>
         </form>
-        {error ? <p className="error">{error}</p> : null}
+        {error ? <div className="error-toast">{error}</div> : null}
       </main>
     );
   }
@@ -825,30 +862,38 @@ export function App(): JSX.Element {
   // --- GAME ---
   const boardGame = displayGame ?? game;
   const turn = boardGame.turn;
-  const pendingProposals = isSpectator ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
+  const isHumanSpymaster = humanPlayer?.role === 'spymaster';
+  const pendingProposals = (isSpectator || (isHumanSpymaster && turn.phase === 'guess')) ? [] : game.proposals[myTeam].filter((p) => p.status === 'pending');
   const redLeft = boardGame.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
   const blueLeft = boardGame.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
-  const isHumanSpymaster = humanPlayer?.role === 'spymaster';
   const showSpyView = isSpectator || isHumanSpymaster;
   const canAct = !isSpectator;
   const hasPendingProposal = pendingProposals.length > 0;
 
   // Chat availability
   const isBanter = turn.phase === 'banter';
+
+  // Banter control: human spymaster controls the banter flow in both directions
+  const incomingTeam = turn.activeTeam === 'red' ? 'blue' : 'red';
+  const showBanterControls = isBanter && isHumanSpymaster && !game.winner && !banterActed;
   const isEnemyTurn = !isSpectator && turn.activeTeam !== myTeam && !isBanter && !game.winner;
   const isPaused = !isSpectator && !!game.humanPaused[myTeam];
-  const chatDisabled = isEnemyTurn || (isHumanSpymaster && turn.activeTeam === myTeam && turn.phase === 'guess');
+  const banterLocked = isBanter && isHumanSpymaster && banterActed;
+  const chatDisabled = isEnemyTurn || banterLocked || (isHumanSpymaster && turn.activeTeam === myTeam && turn.phase === 'guess');
   const chatPlaceholder = isEnemyTurn
     ? `${turn.activeTeam}'s turn — wait for yours…`
-    : (isHumanSpymaster && turn.phase === 'guess')
-      ? 'Spymasters stay quiet during guessing…'
-      : 'Talk to your team…';
+    : banterLocked
+      ? 'Banter in progress…'
+      : (isHumanSpymaster && turn.phase === 'guess')
+        ? 'Spymasters stay quiet during guessing…'
+        : 'Talk to your team…';
 
   return (
     <main className="game-screen">
       <header className="topbar">
         <h1>Clueless</h1>
         {isSpectator ? <span className="spectator-badge">👁 Spectating</span> : null}
+        {isHumanSpymaster ? <span className={`spymaster-badge ${myTeam}`}>🕵️ {myTeam === 'red' ? 'Red' : 'Blue'} Spymaster</span> : null}
         <div className="topbar-right">
           <button
             className={`tts-toggle ${ttsEnabled ? 'active' : ''}`}
@@ -891,7 +936,7 @@ export function App(): JSX.Element {
         </div>
       </header>
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <div className="error-toast">{error}</div> : null}
 
       <div className="game-layout">
         {/* LEFT: Board */}
@@ -979,7 +1024,7 @@ export function App(): JSX.Element {
         <section className="chat-section">
           {/* Actions — only when playing */}
           {canAct ? (
-            <div className="actions">
+            <div className={`actions${isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? ` spymaster-hint-active team-${myTeam}` : ''}`}>
               {isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? (
                 <>
                   <div className="action-prompt">🎯 Your turn — give your team a hint!</div>
@@ -989,6 +1034,18 @@ export function App(): JSX.Element {
                     <button onClick={sendHint}>Give Hint</button>
                   </div>
                 </>
+              ) : null}
+
+              {isMyTurn && turn.phase === 'guess' && isHumanSpymaster ? (
+                <div className="spymaster-waiting">👀 Your team is guessing — watch and wait.</div>
+              ) : null}
+
+              {showBanterControls ? (
+                <div className="banter-note">
+                  💬 {myTeam === incomingTeam
+                    ? 'Your team is up next! Send a message to trash-talk before your hint, or let the teams banter on their own.'
+                    : 'Your team just finished — send a message before the other team starts, or let the teams banter on their own.'}
+                </div>
               ) : null}
 
               {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && !hasPendingProposal ? (
@@ -1113,12 +1170,20 @@ export function App(): JSX.Element {
 
           {/* Chat input — only when playing */}
           {!isSpectator ? (
-            <div className={`chat-input${isPaused ? ' paused' : ''}${isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? ' with-guess' : ''}`}>
+            <div className={`chat-input${isPaused ? ' paused' : ''}${showBanterControls ? ' banter-active' : ''}${isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? ' with-guess' : ''}`}>
               <input
-                placeholder={chatPlaceholder}
+                placeholder={showBanterControls ? 'Say something to the other team…' : chatPlaceholder}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !chatDisabled) sendChat(); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !chatDisabled) {
+                    if (showBanterControls && message.trim()) {
+                      sendChat().then(() => banterAction('start'));
+                    } else {
+                      sendChat();
+                    }
+                  }
+                }}
                 disabled={chatDisabled}
               />
               {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? (
@@ -1133,6 +1198,13 @@ export function App(): JSX.Element {
                   <button onClick={() => proposeGuess()} title="Propose guess">Propose</button>
                   <button onClick={proposeEndTurn} className="secondary" title="End your turn">End Turn</button>
                 </>
+              ) : showBanterControls ? (
+                <>
+                  <button onClick={() => { if (message.trim()) { sendChat().then(() => banterAction('start')); } else { banterAction('start'); } }}>
+                    {message.trim() ? 'Send & Banter' : 'Let them talk'}
+                  </button>
+                  <button onClick={() => banterAction('skip')} className="secondary" title="Skip banter, go straight to your hint">Skip</button>
+                </>
               ) : (
                 <button onClick={sendChat} disabled={chatDisabled}>Send</button>
               )}
@@ -1140,9 +1212,7 @@ export function App(): JSX.Element {
                 isPaused
                   ? <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
                   : <button onClick={pauseLlm} className="secondary" title="Ask LLMs to hold on">✋</button>
-              ) : (
-                <button onClick={nudgeLlm} className="secondary" title="Ask LLMs to respond">🤖</button>
-              )}
+              ) : null}
             </div>
           ) : null}
         </section>

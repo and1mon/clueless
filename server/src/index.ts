@@ -3,9 +3,12 @@ import express from 'express';
 import {
   createGame,
   createProposal,
+  endBanter,
   getGame,
+  getSpymaster,
   hasHumanPlayer,
   isAbandoned,
+  otherTeam,
   postChatMessage,
   serializeGame,
   setHumanPaused,
@@ -52,6 +55,14 @@ async function autoplayIfNeeded(gameId: string): Promise<void> {
 
     // Handle banter between turns
     if (current.turn.phase === 'banter') {
+      // Pause banter if any team has a human spymaster — let them control the flow
+      const hasAnyHumanSpymaster = (['red', 'blue'] as const).some(
+        (t) => getSpymaster(current, t)?.type === 'human',
+      );
+      if (hasAnyHumanSpymaster) {
+        logServer('INFO', 'autoplayIfNeeded', `Banter phase paused — human spymaster in game`, { gameId, iteration: i });
+        break;
+      }
       logServer('INFO', 'autoplayIfNeeded', `Handling banter phase`, { gameId, iteration: i });
       await runBanterRound(gameId);
       continue;
@@ -97,8 +108,16 @@ function afterHumanAction(gameId: string, team: TeamColor): void {
       return;
     }
     if (game.turn.phase === 'banter') {
-      logServer('INFO', 'afterHumanAction', `In banter phase, running banter round`, { gameId });
-      await runBanterRound(gameId);
+      const hasAnyHumanSpymaster = (['red', 'blue'] as const).some(
+        (t) => getSpymaster(game, t)?.type === 'human',
+      );
+      if (hasAnyHumanSpymaster) {
+        logServer('INFO', 'afterHumanAction', `Banter phase — human spymaster in game, waiting`, { gameId });
+        // Don't auto-run banter; let the human choose via banter-action endpoint
+      } else {
+        logServer('INFO', 'afterHumanAction', `In banter phase, running banter round`, { gameId });
+        await runBanterRound(gameId);
+      }
     }
     const updated = getGame(gameId);
     if (!updated.winner && updated.turn.activeTeam === team) {
@@ -227,6 +246,37 @@ app.post('/api/games/:gameId/teams/:team/resume', (req, res) => {
     const team = parseTeam(req.params.team);
     res.json({ status: 'ok' });
     afterHumanAction(req.params.gameId, team);
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+});
+
+// Banter control for human spymaster
+app.post('/api/games/:gameId/banter-action', (req, res) => {
+  try {
+    const { action } = req.body;
+    if (action !== 'start' && action !== 'skip') {
+      throw new Error('action must be "start" or "skip".');
+    }
+    const game = getGame(req.params.gameId);
+    if (game.turn.phase !== 'banter') {
+      throw new Error('Not in banter phase.');
+    }
+    res.json({ status: 'ok' });
+    fireAndForget(async () => {
+      if (action === 'start') {
+        logServer('INFO', 'banterAction', `Human chose to start banter`, { gameId: req.params.gameId });
+        await runBanterRound(req.params.gameId);
+      } else {
+        logServer('INFO', 'banterAction', `Human chose to skip banter`, { gameId: req.params.gameId });
+        const current = getGame(req.params.gameId);
+        if (current.turn.phase === 'banter') {
+          endBanter(req.params.gameId);
+        }
+      }
+      // After banter resolves, continue autoplay (which triggers autoSpymasterHint internally)
+      await autoplayIfNeeded(req.params.gameId);
+    }, 'banterAction');
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }

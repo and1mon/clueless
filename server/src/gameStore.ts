@@ -265,6 +265,11 @@ function assertTeamMember(game: GameState, team: TeamColor, playerId: string): v
   }
 }
 
+export function postSystemMessage(gameId: string, team: TeamColor, content: string): void {
+  const game = getGame(gameId);
+  addSystemMessage(game, team, content);
+}
+
 export function postChatMessage(gameId: string, team: TeamColor, playerId: string, content: string): GameState {
   const game = getGame(gameId);
   assertTeamMember(game, team, playerId);
