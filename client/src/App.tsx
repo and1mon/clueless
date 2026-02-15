@@ -933,35 +933,65 @@ export function App(): JSX.Element {
         {/* LEFT: Board */}
         <section className="board-section">
           <div className="board-info">
-            <div className="score-bar">
-              <span className="team-score red-score">{redLeft} <small>red</small></span>
-              <span className="sep">—</span>
-              <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
-            </div>
             {boardGame.winner ? (
               <div className="game-status winner-banner">{boardGame.winner} wins!</div>
             ) : turn.phase === 'banter' ? (
-              <div className="game-status">
-                <span className="phase">Between turns...</span>
-              </div>
+              <>
+                <div className="score-bar">
+                  <span className="team-score red-score">{redLeft} <small>red</small></span>
+                  <span className="sep">—</span>
+                  <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
+                </div>
+                <div className="game-status">
+                  <span className="phase">Between turns...</span>
+                </div>
+              </>
             ) : turn.phase === 'guess' && turn.hintWord ? (
-              <div className="game-status">
+              <>
                 <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
-                <span className="hint-word">"{turn.hintWord}"</span>
-                <span className="hint-count">{turn.hintCount}</span>
-                <span className="hint-progress">{turn.guessesMade} / {turn.maxGuesses} guesses</span>
-                {showSpyView && turn.hintTargets?.length ? (
-                  <span className="hint-targets">targeting: {turn.hintTargets.join(', ')}</span>
-                ) : null}
-                {showSpyView && turn.hintReasoning ? (
-                  <span className="hint-reasoning">reasoning: {turn.hintReasoning}</span>
-                ) : null}
-              </div>
+                <div className="score-bar">
+                  <span className="team-score red-score">{redLeft} <small>red</small></span>
+                  <span className="sep">—</span>
+                  <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
+                </div>
+                {showSpyView && (turn.hintTargets?.length || turn.hintReasoning) ? (
+                  <div className="hint-card">
+                    <div className="hint-card-main">
+                      <span className="hint-word">"{turn.hintWord}"</span>
+                      <span className={`hint-count hint-count-${turn.activeTeam}`}>{turn.hintCount}</span>
+                      <span className="hint-progress">{turn.guessesMade} / {turn.maxGuesses} guesses</span>
+                    </div>
+                    <div className="hint-card-details">
+                      {turn.hintTargets?.length ? (
+                        <div className="hint-targets">
+                          <strong>Targeting:</strong> {turn.hintTargets.join(', ')}
+                        </div>
+                      ) : null}
+                      {turn.hintReasoning ? (
+                        <div className="hint-reasoning">{turn.hintReasoning}</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="game-status">
+                    <span className="hint-word">"{turn.hintWord}"</span>
+                    <span className={`hint-count hint-count-${turn.activeTeam}`}>{turn.hintCount}</span>
+                    <span className="hint-progress">{turn.guessesMade} / {turn.maxGuesses} guesses</span>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="game-status">
+              <>
                 <span className={`badge ${turn.activeTeam}`}>{turn.activeTeam}'s turn</span>
-                <span className="phase">Waiting for hint…</span>
-              </div>
+                <div className="score-bar">
+                  <span className="team-score red-score">{redLeft} <small>red</small></span>
+                  <span className="sep">—</span>
+                  <span className="team-score blue-score">{blueLeft} <small>blue</small></span>
+                </div>
+                <div className="game-status">
+                  <span className="phase">Waiting for hint…</span>
+                </div>
+              </>
             )}
           </div>
           <div className="board-grid">
