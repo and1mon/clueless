@@ -409,15 +409,23 @@ async function runConversationRound(
 ): Promise<boolean> {
   const game = getGame(gameId);
   const llmPlayers = getTeamLlmPlayers(game, team);
-  if (!llmPlayers.length) {
-    logWarn('runConversationRound', `No LLM players on team`, { gameId, team });
+
+  // Include human operative in the round-robin discussion cycle
+  const allSpeakers: Player[] = [...llmPlayers];
+  const human = getHumanPlayer(game, team);
+  if (human && human.role === 'operative' && game.turn.phase === 'guess') {
+    allSpeakers.push(human);
+  }
+
+  if (!allSpeakers.length) {
+    logWarn('runConversationRound', `No players on team`, { gameId, team });
     return false;
   }
 
-  logInfo('runConversationRound', `Starting conversation round`, { gameId, team, playerCount: llmPlayers.length, phase: game.turn.phase });
+  logInfo('runConversationRound', `Starting conversation round`, { gameId, team, playerCount: allSpeakers.length, phase: game.turn.phase });
 
   // B3: Shuffle speaking order each round
-  const speakers = shuffle(llmPlayers);
+  const speakers = shuffle(allSpeakers);
   const lastSpeakerId = getTeamState(gameId, team).lastSpeakerId;
   if (lastSpeakerId && speakers.length > 1 && speakers[0]?.id === lastSpeakerId) {
     const alternativeIndex = speakers.findIndex((p) => p.id !== lastSpeakerId);
@@ -438,6 +446,14 @@ async function runConversationRound(
       return true;
     }
     if (spokePlayers.has(player.id)) continue;
+
+    // If it's the human's turn, pause and wait for their input
+    if (player.type === 'human') {
+      logInfo('runConversationRound', `Human's turn to speak`, { gameId, team, playerId: player.id, playerName: player.name });
+      postSystemMessage(gameId, team, `${player.name}, what do you think?`);
+      setHumanPaused(gameId, team, true);
+      return true;
+    }
 
     logInfo('runConversationRound', `Player speaking`, { gameId, team, playerId: player.id, playerName: player.name });
     await runOnePlayer(gameId, team, player.id);

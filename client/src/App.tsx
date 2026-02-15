@@ -867,26 +867,17 @@ export function App(): JSX.Element {
   const redLeft = boardGame.cards.filter((c) => c.owner === 'red' && !c.revealed).length;
   const blueLeft = boardGame.cards.filter((c) => c.owner === 'blue' && !c.revealed).length;
   const showSpyView = isSpectator || isHumanSpymaster;
-  const canAct = !isSpectator;
   const hasPendingProposal = pendingProposals.length > 0;
 
   // Chat availability
   const isBanter = turn.phase === 'banter';
 
-  // Banter control: human spymaster controls the banter flow in both directions
-  const incomingTeam = turn.activeTeam === 'red' ? 'blue' : 'red';
+  // Banter control: human spymaster controls the banter flow
   const showBanterControls = isBanter && isHumanSpymaster && !game.winner && !banterActed;
   const isEnemyTurn = !isSpectator && turn.activeTeam !== myTeam && !isBanter && !game.winner;
   const isPaused = !isSpectator && !!game.humanPaused[myTeam];
   const banterLocked = isBanter && isHumanSpymaster && banterActed;
-  const chatDisabled = isEnemyTurn || banterLocked || (isHumanSpymaster && turn.activeTeam === myTeam && turn.phase === 'guess');
-  const chatPlaceholder = isEnemyTurn
-    ? `${turn.activeTeam}'s turn — wait for yours…`
-    : banterLocked
-      ? 'Banter in progress…'
-      : (isHumanSpymaster && turn.phase === 'guess')
-        ? 'Spymasters stay quiet during guessing…'
-        : 'Talk to your team…';
+  const isOperativeGuessPhase = !isHumanSpymaster && !isSpectator && isMyTurn && turn.phase === 'guess';
 
   return (
     <main className="game-screen">
@@ -981,8 +972,8 @@ export function App(): JSX.Element {
                   key={card.word}
                   type="button"
                   className={`card ${card.revealed ? `revealed ${card.owner}` : 'hidden'} ${showOwner ? `spy-${card.owner}` : ''}`}
-                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isHumanSpymaster || hasPendingProposal}
-                  onClick={() => proposeGuess(card.word)}
+                  disabled={!isMyTurn || turn.phase !== 'guess' || card.revealed || isHumanSpymaster || hasPendingProposal || !isPaused}
+                  onClick={() => setGuessWord(card.word)}
                   title={showOwner ? card.owner : undefined}
                 >
                   {card.word}
@@ -1022,59 +1013,6 @@ export function App(): JSX.Element {
 
         {/* RIGHT: Unified Chat */}
         <section className="chat-section">
-          {/* Actions — only when playing */}
-          {canAct ? (
-            <div className={`actions${isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? ` spymaster-hint-active team-${myTeam}` : ''}`}>
-              {isMyTurn && turn.phase === 'hint' && isHumanSpymaster ? (
-                <>
-                  <div className="action-prompt">🎯 Your turn — give your team a hint!</div>
-                  <div className="action-row">
-                    <input placeholder="Hint word" value={hintWord} onChange={(e) => setHintWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendHint(); }} />
-                    <input type="number" min={1} value={hintCount} onChange={(e) => setHintCount(e.target.value)} className="count-input" />
-                    <button onClick={sendHint}>Give Hint</button>
-                  </div>
-                </>
-              ) : null}
-
-              {isMyTurn && turn.phase === 'guess' && isHumanSpymaster ? (
-                <div className="spymaster-waiting">👀 Your team is guessing — watch and wait.</div>
-              ) : null}
-
-              {showBanterControls ? (
-                <div className="banter-note">
-                  💬 {myTeam === incomingTeam
-                    ? 'Your team is up next! Send a message to trash-talk before your hint, or let the teams banter on their own.'
-                    : 'Your team just finished — send a message before the other team starts, or let the teams banter on their own.'}
-                </div>
-              ) : null}
-
-              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && !hasPendingProposal ? (
-                <div className="action-prompt">🎯 Your turn — pick a word or end the turn!</div>
-              ) : null}
-
-              {isMyTurn && turn.phase === 'guess' && !isHumanSpymaster && hasPendingProposal ? (
-                <div className="action-prompt">🗳️ Vote on the proposal below!</div>
-              ) : null}
-
-              {pendingProposals.map((p) => {
-                const isOwnProposal = p.createdBy === humanPlayer?.id;
-                return (
-                  <div key={p.id} className="proposal-card">
-                    <span className="proposal-label">{p.kind === 'guess' ? `Guess "${p.payload.word}"` : 'End turn'} — {playerNames[p.createdBy]}</span>
-                    {!isOwnProposal ? (
-                      <div className="vote-buttons">
-                        <button onClick={() => vote(p.id, 'accept')} className="accept">✓ Accept</button>
-                        <button onClick={() => vote(p.id, 'reject')} className="reject">✗ Reject</button>
-                      </div>
-                    ) : (
-                      <span className="waiting-votes">Waiting for votes…</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-
           {/* Unified chat log */}
           <div className="chat-log">
             {game.chatLog.slice(0, ttsEnabled ? displayUpTo.current : game.chatLog.length).map((msg) => {
@@ -1168,26 +1106,122 @@ export function App(): JSX.Element {
             <div ref={chatEndRef} />
           </div>
 
-          {/* Chat input — only when playing */}
-          {!isSpectator ? (
-            <div className={`chat-input${isPaused ? ' paused' : ''}${showBanterControls ? ' banter-active' : ''}${isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? ' with-guess' : ''}`}>
-              <input
-                placeholder={showBanterControls ? 'Say something to the other team…' : chatPlaceholder}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !chatDisabled) {
-                    if (showBanterControls && message.trim()) {
-                      sendChat().then(() => banterAction('start'));
-                    } else {
-                      sendChat();
-                    }
-                  }
-                }}
-                disabled={chatDisabled}
-              />
-              {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' && !hasPendingProposal ? (
-                <>
+          {/* Multi-mode input bar */}
+          {!isSpectator ? (() => {
+            // Determine input bar mode (first match wins)
+            const ownProposal = pendingProposals.find((p) => p.createdBy === humanPlayer?.id);
+            const othersProposals = pendingProposals.filter((p) => p.createdBy !== humanPlayer?.id);
+            const spymasterHintPhase = isMyTurn && turn.phase === 'hint' && isHumanSpymaster;
+            const spymasterGuessPhase = isMyTurn && turn.phase === 'guess' && isHumanSpymaster;
+
+            // Mode 5: Spymaster hint phase
+            if (spymasterHintPhase) {
+              return (
+                <div className={`chat-input hint-mode team-${myTeam}`}>
+                  <input placeholder="Hint word" value={hintWord} onChange={(e) => setHintWord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') sendHint(); }} />
+                  <input type="number" min={1} value={hintCount} onChange={(e) => setHintCount(e.target.value)} className="count-input" />
+                  <button onClick={sendHint}>Give Hint</button>
+                </div>
+              );
+            }
+
+            // Mode 6: Spymaster guess phase
+            if (spymasterGuessPhase) {
+              return (
+                <div className="chat-input disabled-mode">
+                  <input disabled placeholder="Your team is guessing…" value="" readOnly />
+                </div>
+              );
+            }
+
+            // Mode 2: Enemy turn
+            if (isEnemyTurn) {
+              return (
+                <div className="chat-input">
+                  <input disabled placeholder={`${turn.activeTeam}'s turn — wait for yours…`} value="" readOnly />
+                  <button disabled>Send</button>
+                </div>
+              );
+            }
+
+            // Mode 3: Banter controls
+            if (showBanterControls) {
+              return (
+                <div className="chat-input banter-active">
+                  <input
+                    placeholder="Say something to the other team…"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && message.trim()) {
+                        sendChat().then(() => banterAction('start'));
+                      }
+                    }}
+                  />
+                  <button onClick={() => { if (message.trim()) { sendChat().then(() => banterAction('start')); } else { banterAction('start'); } }}>
+                    {message.trim() ? 'Send & Banter' : 'Let them talk'}
+                  </button>
+                  <button onClick={() => banterAction('skip')} className="secondary" title="Skip banter">Skip</button>
+                </div>
+              );
+            }
+
+            // Mode 4: Banter locked
+            if (banterLocked) {
+              return (
+                <div className="chat-input">
+                  <input disabled placeholder="Banter in progress…" value="" readOnly />
+                </div>
+              );
+            }
+
+            // Mode 7: Operative, guess, not paused
+            if (isOperativeGuessPhase && !isPaused) {
+              return (
+                <div className="chat-input">
+                  <input disabled placeholder="Teammates are discussing…" value="" readOnly />
+                  <button onClick={pauseLlm} className="secondary" title="Ask LLMs to hold on">✋</button>
+                </div>
+              );
+            }
+
+            // Mode 8: Operative, guess, paused, pending proposal from others
+            if (isOperativeGuessPhase && isPaused && othersProposals.length > 0) {
+              return (
+                <div className="chat-input vote-mode">
+                  {othersProposals.map((p) => (
+                    <div key={p.id} className="proposal-card">
+                      <span className="proposal-label">{p.kind === 'guess' ? `Guess "${p.payload.word}"` : 'End turn'} — {playerNames[p.createdBy]}</span>
+                      <div className="vote-buttons">
+                        <button onClick={() => vote(p.id, 'accept')} className="accept">✓ Accept</button>
+                        <button onClick={() => vote(p.id, 'reject')} className="reject">✗ Reject</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+
+            // Mode 9: Operative, guess, paused, own proposal pending
+            if (isOperativeGuessPhase && isPaused && ownProposal) {
+              return (
+                <div className="chat-input paused">
+                  <input disabled placeholder="Waiting for votes…" value="" readOnly />
+                  <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
+                </div>
+              );
+            }
+
+            // Mode 10: Operative, guess, paused, no proposal
+            if (isOperativeGuessPhase && isPaused) {
+              return (
+                <div className="chat-input paused with-guess">
+                  <input
+                    placeholder="Your turn — say something or pick a word!"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
+                  />
                   <input
                     className="guess-input"
                     placeholder="Guess word (or click board)"
@@ -1197,24 +1231,24 @@ export function App(): JSX.Element {
                   />
                   <button onClick={() => proposeGuess()} title="Propose guess">Propose</button>
                   <button onClick={proposeEndTurn} className="secondary" title="End your turn">End Turn</button>
-                </>
-              ) : showBanterControls ? (
-                <>
-                  <button onClick={() => { if (message.trim()) { sendChat().then(() => banterAction('start')); } else { banterAction('start'); } }}>
-                    {message.trim() ? 'Send & Banter' : 'Let them talk'}
-                  </button>
-                  <button onClick={() => banterAction('skip')} className="secondary" title="Skip banter, go straight to your hint">Skip</button>
-                </>
-              ) : (
-                <button onClick={sendChat} disabled={chatDisabled}>Send</button>
-              )}
-              {isMyTurn && !isHumanSpymaster && turn.phase === 'guess' ? (
-                isPaused
-                  ? <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
-                  : <button onClick={pauseLlm} className="secondary" title="Ask LLMs to hold on">✋</button>
-              ) : null}
-            </div>
-          ) : null}
+                  <button onClick={resumeLlm} className="secondary" title="Let LLMs continue discussing">▶️</button>
+                </div>
+              );
+            }
+
+            // Mode 11: Default — chat + send
+            return (
+              <div className="chat-input">
+                <input
+                  placeholder="Talk to your team…"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
+                />
+                <button onClick={sendChat}>Send</button>
+              </div>
+            );
+          })() : null}
         </section>
       </div>
     </main>

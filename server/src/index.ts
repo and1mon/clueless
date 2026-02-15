@@ -171,8 +171,11 @@ app.post('/api/games/:gameId/chat', (req, res) => {
     const team = parseTeam(req.body.team);
     const game = postChatMessage(req.params.gameId, team, req.body.playerId, req.body.content);
     res.json(serializeGame(game));
-    // Chat does NOT trigger afterHumanAction — LLMs are already running freely.
-    // The human's message will be seen by LLMs in the next conversation round.
+    // If the human is in the round-robin cycle and it's their turn (paused),
+    // chatting counts as taking their turn and resumes LLM discussion.
+    if (game.humanPaused[team] && !game.winner && game.turn.activeTeam === team && game.turn.phase === 'guess') {
+      afterHumanAction(game.id, team);
+    }
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
